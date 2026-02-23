@@ -11,7 +11,7 @@ let package = Package(
         .library(name: "LLMToolkits", targets: ["LLMToolkits"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/no-problem-dev/swift-llm-client.git", from: "1.0.0"),
+        .package(url: "https://github.com/no-problem-dev/swift-llm-client.git", from: "1.1.0"),
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.10.0"),
     ],
     targets: [

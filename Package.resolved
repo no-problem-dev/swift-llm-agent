@@ -1,5 +1,5 @@
 {
-  "originHash" : "088345e847452bae9fa8f57a20bc22f09ab3d218e3e4360a4c1296825fda4879",
+  "originHash" : "5c827a51db19e76d544ab30872923410b5a0680f6ae23c88720f57936062fa17",
   "pins" : [
     {
       "identity" : "eventsource",
@@ -42,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/no-problem-dev/swift-llm-client.git",
       "state" : {
-        "revision" : "3ed1dfa72254430feccf11e4fcd440f6d1697869",
-        "version" : "1.0.0"
+        "revision" : "b7d92b3d3fa68d291f63c30252c03ebca1ef67e5",
+        "version" : "1.1.0"
       }
     },
     {
