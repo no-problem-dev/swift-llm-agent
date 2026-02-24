@@ -81,6 +81,91 @@ public final class WebToolKit: ToolKit, @unchecked Sendable {
         ]
     }
 
+    // MARK: - Encoding Helper
+
+    /// レスポンスデータを適切なエンコーディングでデコード
+    ///
+    /// Content-Typeヘッダーからcharsetを解析し、適切なエンコーディングで変換します。
+    /// charsetが指定されていない場合や変換に失敗した場合は、フォールバックチェーンを使用します。
+    ///
+    /// フォールバック順: UTF-8 → ISO-8859-1 → Windows-1252 → Shift_JIS → EUC-JP → ASCII
+    private func decodeResponseData(_ data: Data, contentType: String?) -> String? {
+        // Content-Typeからcharsetを解析
+        if let contentType = contentType,
+           let charset = Self.parseCharset(from: contentType),
+           let encoding = Self.stringEncoding(from: charset) {
+            if let result = String(data: data, encoding: encoding) {
+                return result
+            }
+        }
+
+        // フォールバックチェーン
+        let fallbackEncodings: [String.Encoding] = [
+            .utf8,
+            .isoLatin1,           // ISO-8859-1
+            .windowsCP1252,       // Windows-1252
+            .shiftJIS,            // Shift_JIS
+            .japaneseEUC,         // EUC-JP
+            .ascii,
+        ]
+
+        for encoding in fallbackEncodings {
+            if let result = String(data: data, encoding: encoding) {
+                return result
+            }
+        }
+
+        return nil
+    }
+
+    /// Content-Typeヘッダーからcharsetを抽出
+    private static func parseCharset(from contentType: String) -> String? {
+        // "text/html; charset=UTF-8" → "UTF-8"
+        let components = contentType.lowercased().components(separatedBy: ";")
+        for component in components {
+            let trimmed = component.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("charset=") {
+                let charset = trimmed.dropFirst("charset=".count)
+                    .trimmingCharacters(in: .whitespaces)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+                return charset
+            }
+        }
+        return nil
+    }
+
+    /// charset名からString.Encodingに変換
+    private static func stringEncoding(from charset: String) -> String.Encoding? {
+        switch charset.lowercased() {
+        case "utf-8", "utf8":
+            return .utf8
+        case "iso-8859-1", "latin1", "iso_8859-1":
+            return .isoLatin1
+        case "windows-1252", "cp1252":
+            return .windowsCP1252
+        case "shift_jis", "shift-jis", "sjis", "x-sjis":
+            return .shiftJIS
+        case "euc-jp", "eucjp", "x-euc-jp":
+            return .japaneseEUC
+        case "ascii", "us-ascii":
+            return .ascii
+        case "iso-8859-2", "latin2":
+            return .isoLatin2
+        case "utf-16", "utf16":
+            return .utf16
+        case "utf-16be":
+            return .utf16BigEndian
+        case "utf-16le":
+            return .utf16LittleEndian
+        default:
+            // CFStringEncoding経由で追加の変換を試みる
+            let cfEncoding = CFStringConvertIANACharSetNameToEncoding(charset as CFString)
+            guard cfEncoding != kCFStringEncodingInvalidId else { return nil }
+            let nsEncoding = CFStringConvertEncodingToNSStringEncoding(cfEncoding)
+            return String.Encoding(rawValue: nsEncoding)
+        }
+    }
+
     // MARK: - Domain Validation
 
     /// ドメインが許可されているかチェック
@@ -160,14 +245,15 @@ public final class WebToolKit: ToolKit, @unchecked Sendable {
                 throw WebToolKitError.contentTooLarge(size: responseData.count, maxSize: maxContentSize)
             }
 
-            guard let content = String(data: responseData, encoding: .utf8) else {
+            let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type")
+            guard let content = decodeResponseData(responseData, contentType: contentType) else {
                 throw WebToolKitError.encodingError
             }
 
             let result = FetchResult(
                 url: url.absoluteString,
                 statusCode: httpResponse.statusCode,
-                contentType: httpResponse.value(forHTTPHeaderField: "Content-Type"),
+                contentType: contentType,
                 contentLength: responseData.count,
                 content: content
             )
@@ -351,8 +437,8 @@ public final class WebToolKit: ToolKit, @unchecked Sendable {
                 throw WebToolKitError.contentTooLarge(size: responseData.count, maxSize: maxContentSize)
             }
 
-            guard let html = String(data: responseData, encoding: .utf8)
-                    ?? String(data: responseData, encoding: .ascii) else {
+            let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type")
+            guard let html = decodeResponseData(responseData, contentType: contentType) else {
                 throw WebToolKitError.encodingError
             }
 
@@ -601,21 +687,32 @@ public enum WebToolKitError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidURL(let url):
-            return "Invalid URL: \(url)"
+            return "Invalid URL: \(url). Use web_search to find valid URLs instead of guessing."
         case .unsupportedScheme(let scheme):
             return "Unsupported URL scheme: \(scheme). Only http and https are supported."
         case .domainNotAllowed(let domain, let allowed):
-            return "Domain '\(domain)' is not allowed. Allowed domains: \(allowed.joined(separator: ", "))"
+            return "Domain '\(domain)' is not allowed. Allowed domains: \(allowed.joined(separator: ", ")). Try a different source."
         case .invalidResponse:
-            return "Invalid server response"
+            return "Invalid server response. Try a different URL or use web_search to find alternatives."
         case .httpError(let statusCode):
-            return "HTTP error: \(statusCode)"
+            switch statusCode {
+            case 401, 403:
+                return "Access blocked (HTTP \(statusCode)). Try a different source."
+            case 404:
+                return "Page not found (HTTP 404). Use web_search to find valid URLs instead of guessing."
+            case 429:
+                return "Rate limited (HTTP 429). Wait before retrying, or try a different source."
+            case 500...599:
+                return "Server error (HTTP \(statusCode)). The server may be temporarily unavailable. Try again later or use a different source."
+            default:
+                return "HTTP error \(statusCode). Try a different URL or use web_search to find alternatives."
+            }
         case .contentTooLarge(let size, let maxSize):
-            return "Content too large: \(size) bytes (max: \(maxSize) bytes)"
+            return "Content too large: \(size) bytes (max: \(maxSize) bytes). Try fetching a more specific URL or use fetch_page with max_length parameter."
         case .encodingError:
-            return "Could not decode response as UTF-8"
+            return "Cannot decode the response encoding. Try a different source."
         case .jsonParseError(let message):
-            return "JSON parse error: \(message)"
+            return "JSON parse error: \(message). Verify the URL returns JSON, or use fetch_url for non-JSON content."
         }
     }
 }

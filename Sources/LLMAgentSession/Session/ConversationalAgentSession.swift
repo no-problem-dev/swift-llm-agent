@@ -96,6 +96,9 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
     /// `ask_user` ツール呼び出し時に設定され、`reply(_:)` で再開されます。
     private var answerContinuation: CheckedContinuation<String, Never>?
 
+    /// ask_user ツールの呼び出しカウント
+    private var askUserCallCount: Int = 0
+
     // MARK: - Initialization
 
     /// 会話エージェントセッションを初期化
@@ -331,11 +334,21 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
     ) async {
         var step = 0
         let maxSteps = configuration.maxSteps
+        let softMaxSteps = configuration.softMaxSteps
         var loopPhase: LoopPhase = .toolUse
 
         do {
             while step < maxSteps {
                 step += 1
+
+                // ソフトリミット注入: まとめを促すメッセージを会話履歴に追加
+                if step == softMaxSteps, case .toolUse = loopPhase {
+                    let softLimitMsg = "IMPORTANT: You are running low on remaining steps (\(maxSteps - step) left). " +
+                        "Wrap up your current work and produce your final output now. " +
+                        "Do not start new tool calls unless absolutely necessary."
+                    messages.append(LLMMessage.user(softLimitMsg))
+                    updateStatusAndYield(.running(step: .interrupted(softLimitMsg)), continuation: continuation)
+                }
 
                 // 割り込みチェックポイント（toolUse フェーズのみ）
                 if case .toolUse = loopPhase, !interruptQueue.isEmpty {
@@ -443,38 +456,56 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                             addToolResults(toolResults)
                         }
 
-                        // ask_user が呼ばれた場合は一時停止してユーザーの回答を待つ
+                        // ask_user が呼ばれた場合
                         if let call = askUserCall, let question = askUserQuestion {
-                            pendingAskUserCall = call
-                            status = .awaitingUserInput(question: question)
-                            continuation.yield(.awaitingUserInput(question: question))
+                            askUserCallCount += 1
 
-                            // withCheckedContinuation で一時停止
-                            let answer = await withCheckedContinuation { cont in
-                                self.answerContinuation = cont
+                            // ask_user バジェット制御
+                            if let maxCalls = configuration.maxAskUserCalls, askUserCallCount > maxCalls {
+                                // バジェット超過: ユーザーを待たず synthetic 回答を返す
+                                let syntheticAnswer = "Proceed with your best judgment."
+                                let result = ToolResponse(
+                                    callId: call.id,
+                                    name: call.name,
+                                    output: syntheticAnswer,
+                                    isError: false
+                                )
+                                addToolResults([result])
+                                updateStatusAndYield(.running(step: .toolResult(result)), continuation: continuation)
+                                pendingAskUserCall = nil
+                            } else {
+                                // 通常の ask_user フロー
+                                pendingAskUserCall = call
+                                status = .awaitingUserInput(question: question)
+                                continuation.yield(.awaitingUserInput(question: question))
+
+                                // withCheckedContinuation で一時停止
+                                let answer = await withCheckedContinuation { cont in
+                                    self.answerContinuation = cont
+                                }
+
+                                // キャンセルされた場合（paused状態）は終了
+                                guard status != .paused else {
+                                    // cancel() で paused に変更されている場合
+                                    continuation.yield(.paused)
+                                    continuation.finish()
+                                    return
+                                }
+
+                                // running に戻る
+                                updateStatusAndYield(.running(step: .userMessage(answer)), continuation: continuation)
+
+                                // ツール結果として回答を追加
+                                let result = ToolResponse(
+                                    callId: call.id,
+                                    name: call.name,
+                                    output: answer.isEmpty ? "No answer provided" : answer,
+                                    isError: false
+                                )
+                                addToolResults([result])
+                                updateStatusAndYield(.running(step: .toolResult(result)), continuation: continuation)
+                                pendingAskUserCall = nil
                             }
-
-                            // キャンセルされた場合（paused状態）は終了
-                            guard status != .paused else {
-                                // cancel() で paused に変更されている場合
-                                continuation.yield(.paused)
-                                continuation.finish()
-                                return
-                            }
-
-                            // running に戻る
-                            updateStatusAndYield(.running(step: .userMessage(answer)), continuation: continuation)
-
-                            // ツール結果として回答を追加
-                            let result = ToolResponse(
-                                callId: call.id,
-                                name: call.name,
-                                output: answer.isEmpty ? "No answer provided" : answer,
-                                isError: false
-                            )
-                            addToolResults([result])
-                            updateStatusAndYield(.running(step: .toolResult(result)), continuation: continuation)
-                            pendingAskUserCall = nil
                             // ループ継続（次のイテレーションで LLM に回答を渡す）
                         }
                     } else {
@@ -504,10 +535,21 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                 }
             }
 
-            let error = ConversationalAgentError.maxStepsExceeded(steps: maxSteps)
-            status = .failed(error: error.localizedDescription)
-            continuation.yield(.failed(error: error.localizedDescription))
-            continuation.finish(throwing: error)
+            // ハードリミット到達: graceful degradation
+            // 最後の assistant メッセージからテキストを抽出してデコードを試行
+            let lastText = extractLastAssistantText()
+            if !lastText.isEmpty,
+               let output = try? JSONDecoder.snakeCaseDecoder.decode(Output.self, from: Data(lastText.utf8)) {
+                // 部分結果でも構造化出力としてデコードできた場合は completed として返す
+                status = .idle
+                continuation.yield(.completed(output: output))
+                continuation.finish()
+            } else {
+                let error = ConversationalAgentError.maxStepsExceeded(steps: maxSteps)
+                status = .failed(error: error.localizedDescription)
+                continuation.yield(.failed(error: error.localizedDescription))
+                continuation.finish(throwing: error)
+            }
 
         } catch let error as ConversationalAgentError {
             status = .failed(error: error.localizedDescription)
@@ -640,6 +682,27 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         let message = LLMMessage.user(FinalOutputConstants.requestMessage)
         messages.append(message)
     }
+
+    /// 最後の assistant メッセージからテキストコンテンツを抽出
+    private func extractLastAssistantText() -> String {
+        guard let lastAssistant = messages.last(where: { $0.role == .assistant }) else {
+            return ""
+        }
+        return lastAssistant.contents.compactMap { content -> String? in
+            if case .text(let text) = content { return text }
+            return nil
+        }.joined()
+    }
+}
+
+// MARK: - JSONDecoder Extension
+
+private extension JSONDecoder {
+    static let snakeCaseDecoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return decoder
+    }()
 }
 
 // MARK: - SessionStatus to SessionPhase Conversion

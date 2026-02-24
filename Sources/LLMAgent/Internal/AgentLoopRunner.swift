@@ -43,6 +43,17 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
         }
 
         if await stateManager.isAtStepLimit {
+            // Graceful degradation: 最後の assistant メッセージからデコードを試行
+            let lastText = await context.getLastAssistantText()
+            if !lastText.isEmpty {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                if let output = try? decoder.decode(Output.self, from: Data(lastText.utf8)) {
+                    phase = .completed
+                    await context.markCompleted()
+                    return .finalResponse(output)
+                }
+            }
             throw AgentError.maxStepsExceeded(steps: stateManager.maxSteps)
         }
 

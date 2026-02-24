@@ -2,6 +2,7 @@ import Foundation
 import LLMClient
 import LLMTool
 import LLMAgent
+import LLMMCP
 
 // MARK: - AgentPreset
 
@@ -66,19 +67,28 @@ public enum ResearcherPreset: AgentPreset {
 
     /// リサーチャー向けデフォルトツールセット
     public static var defaultTools: ToolSet {
-        ToolSet {
+        var toolSet = ToolSet {
             CalculatorTool()
             DateTimeTool()
             TextAnalysisTool()
         }
+        for tool in WebSearchToolKit().tools {
+            toolSet = toolSet.appending(tool)
+        }
+        for tool in WebToolKit().tools {
+            toolSet = toolSet.appending(tool)
+        }
+        return toolSet
     }
 
     /// リサーチタスク向け設定（多めのステップ数を許容）
     public static let configuration = AgentConfiguration(
         maxSteps: 15,
+        softMaxSteps: 12,
         autoExecuteTools: true,
-        maxDuplicateToolCalls: 2,
-        maxToolCallsPerTool: 8
+        maxDuplicateToolCalls: 1,
+        maxToolCallsPerTool: 8,
+        maxAskUserCalls: 0
     )
 }
 
@@ -115,9 +125,11 @@ public enum DataAnalystPreset: AgentPreset {
     /// データ分析タスク向け設定
     public static let configuration = AgentConfiguration(
         maxSteps: 12,
+        softMaxSteps: 9,
         autoExecuteTools: true,
         maxDuplicateToolCalls: 3,
-        maxToolCallsPerTool: 10
+        maxToolCallsPerTool: 10,
+        maxAskUserCalls: 1
     )
 }
 
@@ -153,9 +165,11 @@ public enum CodingAssistantPreset: AgentPreset {
     /// コーディングタスク向け設定
     public static let configuration = AgentConfiguration(
         maxSteps: 10,
+        softMaxSteps: 8,
         autoExecuteTools: true,
-        maxDuplicateToolCalls: 2,
-        maxToolCallsPerTool: 5
+        maxDuplicateToolCalls: 1,
+        maxToolCallsPerTool: 5,
+        maxAskUserCalls: 2
     )
 }
 
@@ -190,9 +204,11 @@ public enum WriterPreset: AgentPreset {
     /// ライティングタスク向け設定
     public static let configuration = AgentConfiguration(
         maxSteps: 8,
+        softMaxSteps: 6,
         autoExecuteTools: true,
-        maxDuplicateToolCalls: 2,
-        maxToolCallsPerTool: 4
+        maxDuplicateToolCalls: 1,
+        maxToolCallsPerTool: 4,
+        maxAskUserCalls: 1
     )
 }
 
@@ -228,9 +244,11 @@ public enum PlannerPreset: AgentPreset {
     /// 計画タスク向け設定（複雑な計画に対応）
     public static let configuration = AgentConfiguration(
         maxSteps: 12,
+        softMaxSteps: 9,
         autoExecuteTools: true,
-        maxDuplicateToolCalls: 2,
-        maxToolCallsPerTool: 6
+        maxDuplicateToolCalls: 1,
+        maxToolCallsPerTool: 6,
+        maxAskUserCalls: 2
     )
 }
 
@@ -263,6 +281,7 @@ public enum MinimalPreset: AgentPreset {
     /// 最小構成向け設定（少ないステップ数）
     public static let configuration = AgentConfiguration(
         maxSteps: 5,
+        softMaxSteps: 3,
         autoExecuteTools: true,
         maxDuplicateToolCalls: 1,
         maxToolCallsPerTool: nil
@@ -356,16 +375,20 @@ public struct CustomPresetBuilder: Sendable {
     /// エージェント設定を設定
     public func withConfiguration(
         maxSteps: Int? = nil,
+        softMaxSteps: Int? = nil,
         autoExecuteTools: Bool? = nil,
         maxDuplicateToolCalls: Int? = nil,
-        maxToolCallsPerTool: Int? = nil
+        maxToolCallsPerTool: Int? = nil,
+        maxAskUserCalls: Int? = nil
     ) -> CustomPresetBuilder {
         var builder = self
         builder.configuration = AgentConfiguration(
             maxSteps: maxSteps ?? configuration.maxSteps,
+            softMaxSteps: softMaxSteps ?? configuration.softMaxSteps,
             autoExecuteTools: autoExecuteTools ?? configuration.autoExecuteTools,
             maxDuplicateToolCalls: maxDuplicateToolCalls ?? configuration.maxDuplicateToolCalls,
-            maxToolCallsPerTool: maxToolCallsPerTool ?? configuration.maxToolCallsPerTool
+            maxToolCallsPerTool: maxToolCallsPerTool ?? configuration.maxToolCallsPerTool,
+            maxAskUserCalls: maxAskUserCalls ?? configuration.maxAskUserCalls
         )
         return builder
     }

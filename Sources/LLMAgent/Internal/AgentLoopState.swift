@@ -54,6 +54,9 @@ internal struct AgentLoopStateSnapshot: Sendable {
     /// 最大ステップ数
     let maxSteps: Int
 
+    /// ソフトリミットステップ数
+    let softMaxSteps: Int
+
     /// ツール呼び出し履歴
     let toolCallHistory: [ToolCallRecord]
 
@@ -65,6 +68,11 @@ internal struct AgentLoopStateSnapshot: Sendable {
     /// ステップ上限に達しているか
     var isAtLimit: Bool {
         currentStep >= maxSteps
+    }
+
+    /// ソフトリミットに達しているか
+    var isAtSoftLimit: Bool {
+        currentStep == softMaxSteps
     }
 }
 
@@ -83,6 +91,9 @@ internal actor AgentLoopStateManager: AgentLoopContext {
     /// 最大ステップ数
     let maxSteps: Int
 
+    /// ソフトリミットステップ数
+    let softMaxSteps: Int
+
     /// ツール呼び出し履歴
     private var toolCallHistory: [ToolCallRecord] = []
 
@@ -93,10 +104,12 @@ internal actor AgentLoopStateManager: AgentLoopContext {
 
     init(maxSteps: Int) {
         self.maxSteps = maxSteps
+        self.softMaxSteps = max(1, maxSteps - 2)
     }
 
     init(configuration: AgentConfiguration) {
         self.maxSteps = configuration.maxSteps
+        self.softMaxSteps = configuration.softMaxSteps
     }
 
     // MARK: - AgentLoopContext Conformance
@@ -104,6 +117,11 @@ internal actor AgentLoopStateManager: AgentLoopContext {
     /// ステップ上限に達しているか
     var isAtStepLimit: Bool {
         currentStep >= maxSteps
+    }
+
+    /// ソフトリミットに達しているか
+    var isAtSoftLimit: Bool {
+        currentStep == softMaxSteps
     }
 
     /// 指定ツールの呼び出し回数をカウント
@@ -163,6 +181,7 @@ internal actor AgentLoopStateManager: AgentLoopContext {
         AgentLoopStateSnapshot(
             currentStep: currentStep,
             maxSteps: maxSteps,
+            softMaxSteps: softMaxSteps,
             toolCallHistory: toolCallHistory
         )
     }

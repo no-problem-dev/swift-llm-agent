@@ -66,6 +66,12 @@ public enum SystemPrompts {
         AgentBehaviors.toolCalling
         AgentBehaviors.planning
 
+        // Enhanced behaviors for research tasks
+        AgentBehaviors.stepBudgetAwareness
+        AgentBehaviors.autonomy
+        AgentBehaviors.webResearchWorkflow
+        AgentBehaviors.researchQuality
+
         // Constraints
         PromptComponent.constraint(
             "Do not fabricate sources or citations."
@@ -110,6 +116,7 @@ public enum SystemPrompts {
         AgentBehaviors.persistence
         AgentBehaviors.toolCalling
         AgentBehaviors.planning
+        AgentBehaviors.stepBudgetAwareness
 
         // Constraints
         PromptComponent.constraint(
@@ -159,6 +166,7 @@ public enum SystemPrompts {
         AgentBehaviors.persistence
         AgentBehaviors.toolCalling
         AgentBehaviors.planning
+        AgentBehaviors.stepBudgetAwareness
 
         // Constraints
         PromptComponent.constraint(
@@ -207,6 +215,7 @@ public enum SystemPrompts {
         AgentBehaviors.persistence
         AgentBehaviors.toolCalling
         AgentBehaviors.planning
+        AgentBehaviors.stepBudgetAwareness
 
         // Constraints
         PromptComponent.constraint(
@@ -252,6 +261,7 @@ public enum SystemPrompts {
         AgentBehaviors.persistence
         AgentBehaviors.toolCalling
         AgentBehaviors.planning
+        AgentBehaviors.stepBudgetAwareness
 
         // Constraints
         PromptComponent.constraint(
@@ -300,6 +310,47 @@ public enum AgentBehaviors {
         "reflect on the outcomes and adjust your approach as needed. Think step by step."
     )
 
+    /// ステップ予算意識の行動指示
+    ///
+    /// エージェントがステップ予算を意識して効率的にツールを使用することを保証します。
+    public static let stepBudgetAwareness = PromptComponent.behavior(
+        "You have a limited number of steps to complete this task. Be efficient with tool usage: " +
+        "batch related queries, avoid redundant calls, and prefer getting multiple pieces of information " +
+        "in a single step when possible. If you receive a warning about remaining steps, immediately " +
+        "consolidate your findings and produce your final output."
+    )
+
+    /// 自律的行動の指示
+    ///
+    /// エージェントが不必要にユーザーに質問しないことを保証します。
+    public static let autonomy = PromptComponent.behavior(
+        "Act autonomously and make reasonable decisions on your own. Do NOT ask the user for " +
+        "clarification or confirmation unless the request is fundamentally ambiguous and cannot " +
+        "proceed without user input. When in doubt, proceed with your best judgment and explain " +
+        "your reasoning in the output."
+    )
+
+    /// Web リサーチワークフローの指示
+    ///
+    /// 「検索→URL取得→fetch」の正しいワークフローを指示し、URL推測を禁止します。
+    public static let webResearchWorkflow = PromptComponent.behavior(
+        "When researching online: ALWAYS use web_search first to find relevant URLs. " +
+        "NEVER guess or fabricate URLs — this leads to 404 errors and wastes steps. " +
+        "The correct workflow is: (1) web_search to discover URLs, (2) fetch_page or fetch_url " +
+        "to retrieve content from discovered URLs. If a fetch fails, search for alternative sources " +
+        "rather than retrying the same URL."
+    )
+
+    /// リサーチ品質の指示
+    ///
+    /// ソース引用、具体例、事実/意見の区別を要求します。
+    public static let researchQuality = PromptComponent.behavior(
+        "Ensure high-quality research output: cite specific sources with URLs when available, " +
+        "include concrete data points and examples, clearly distinguish between verified facts " +
+        "and opinions/speculation, and provide a balanced view covering multiple perspectives. " +
+        "If information is incomplete, explicitly state what could not be verified."
+    )
+
     /// 統合エージェント行動指示
     ///
     /// 便利のために3つのコア行動指示をすべて含みます。
@@ -307,6 +358,7 @@ public enum AgentBehaviors {
         persistence
         toolCalling
         planning
+        stepBudgetAwareness
     }
 }
 

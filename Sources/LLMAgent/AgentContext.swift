@@ -244,5 +244,18 @@ public actor AgentContext {
             return nil
         }.joined()
     }
+
+    /// 最後の assistant メッセージからテキストコンテンツを抽出
+    ///
+    /// ハードリミット到達時の graceful degradation に使用します。
+    public func getLastAssistantText() -> String {
+        guard let lastAssistant = messages.last(where: { $0.role == .assistant }) else {
+            return ""
+        }
+        return lastAssistant.contents.compactMap { content -> String? in
+            if case .text(let text) = content { return text }
+            return nil
+        }.joined()
+    }
 }
 

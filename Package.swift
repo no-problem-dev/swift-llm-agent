@@ -32,6 +32,7 @@ let package = Package(
         ]),
         .target(name: "LLMToolkits", dependencies: [
             "LLMAgent",
+            "LLMMCP",
             .product(name: "LLMClient", package: "swift-llm-client"),
             .product(name: "LLMTool", package: "swift-llm-client"),
         ]),

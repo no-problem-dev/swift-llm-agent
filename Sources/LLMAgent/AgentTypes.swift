@@ -45,6 +45,13 @@ public struct AgentConfiguration: Sendable {
     /// 最大ステップ数（無限ループ防止）
     public let maxSteps: Int
 
+    /// ソフトリミットステップ数
+    ///
+    /// このステップに到達すると「残りステップが少ない」旨のメッセージを
+    /// 会話履歴に注入し、エージェントにまとめを促します。
+    /// デフォルトは `max(1, maxSteps - 2)`。
+    public let softMaxSteps: Int
+
     /// ツール実行を自動で行うか
     public let autoExecuteTools: Bool
 
@@ -63,24 +70,36 @@ public struct AgentConfiguration: Sendable {
     /// - Note: `nil` の場合は制限なし（maxSteps でのみ制限）
     public let maxToolCallsPerTool: Int?
 
+    /// ask_user ツールの最大呼び出し回数
+    ///
+    /// エージェントがユーザーに質問する回数を制限します。
+    /// - `nil`: 無制限（デフォルト）
+    /// - `0`: ask_user を禁止（自律的に判断）
+    /// - 正の値: 指定回数まで許可
+    public let maxAskUserCalls: Int?
+
     /// デフォルト設定
     public static let `default` = AgentConfiguration(
         maxSteps: 10,
         autoExecuteTools: true,
-        maxDuplicateToolCalls: 2,
+        maxDuplicateToolCalls: 1,
         maxToolCallsPerTool: 5
     )
 
     public init(
         maxSteps: Int = 10,
+        softMaxSteps: Int? = nil,
         autoExecuteTools: Bool = true,
-        maxDuplicateToolCalls: Int = 2,
-        maxToolCallsPerTool: Int? = 5
+        maxDuplicateToolCalls: Int = 1,
+        maxToolCallsPerTool: Int? = 5,
+        maxAskUserCalls: Int? = nil
     ) {
         self.maxSteps = maxSteps
+        self.softMaxSteps = softMaxSteps ?? max(1, maxSteps - 2)
         self.autoExecuteTools = autoExecuteTools
         self.maxDuplicateToolCalls = maxDuplicateToolCalls
         self.maxToolCallsPerTool = maxToolCallsPerTool
+        self.maxAskUserCalls = maxAskUserCalls
     }
 }
 
