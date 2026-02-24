@@ -285,12 +285,29 @@ public final class WebToolKit: ToolKit, @unchecked Sendable {
                 throw WebToolKitError.httpError(statusCode: httpResponse.statusCode)
             }
 
-            guard responseData.count <= maxContentSize else {
-                throw WebToolKitError.contentTooLarge(size: responseData.count, maxSize: maxContentSize)
+            let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type")
+
+            // バイナリコンテンツ（PDF・画像等）はテキスト変換不可のためエラー
+            if responseData.count > maxContentSize {
+                let ct = contentType?.lowercased() ?? ""
+                if ct.contains("application/pdf") || ct.contains("application/octet-stream")
+                    || ct.contains("image/") || ct.contains("audio/") || ct.contains("video/") {
+                    throw WebToolKitError.contentTooLarge(size: responseData.count, maxSize: maxContentSize)
+                }
             }
 
-            let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type")
-            guard let content = decodeResponseData(responseData, contentType: contentType) else {
+            // テキスト/HTMLコンテンツは切り詰めて処理続行
+            let processData: Data
+            let wasTruncated: Bool
+            if responseData.count > maxContentSize {
+                processData = Data(responseData.prefix(maxContentSize))
+                wasTruncated = true
+            } else {
+                processData = responseData
+                wasTruncated = false
+            }
+
+            guard let content = decodeResponseData(processData, contentType: contentType) else {
                 throw WebToolKitError.encodingError
             }
 
@@ -329,7 +346,8 @@ public final class WebToolKit: ToolKit, @unchecked Sendable {
                 contentLength: totalLength,
                 startIndex: safeStartIndex,
                 hasMore: hasMore,
-                nextHint: nil
+                nextHint: nil,
+                wasTruncated: wasTruncated
             )
 
             if hasMore {
@@ -495,6 +513,7 @@ private struct FetchResult: Codable {
     var startIndex: Int
     var hasMore: Bool
     var nextHint: String?
+    var wasTruncated: Bool
 
     enum CodingKeys: String, CodingKey {
         case url, title, content
@@ -502,6 +521,7 @@ private struct FetchResult: Codable {
         case startIndex = "start_index"
         case hasMore = "has_more"
         case nextHint = "next_hint"
+        case wasTruncated = "was_truncated"
     }
 }
 
@@ -548,7 +568,7 @@ public enum WebToolKitError: Error, LocalizedError {
                 return "HTTP error \(statusCode). Try a different URL or use web_search to find alternatives."
             }
         case .contentTooLarge(let size, let maxSize):
-            return "Content too large: \(size) bytes (max: \(maxSize) bytes). Try fetching a more specific URL or use fetch with max_length parameter."
+            return "Content too large: \(size) bytes (max: \(maxSize) bytes). This is a binary file (PDF, image, etc.) that cannot be processed as text. Use web_search to find an HTML version or try fetch_headers to check the content type first."
         case .encodingError:
             return "Cannot decode the response encoding. Try a different source."
         case .jsonParseError(let message):

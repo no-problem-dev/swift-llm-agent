@@ -155,10 +155,13 @@ public protocol ConversationalAgentSessionProtocol<Client>: Actor {
     /// ## 状態の種類
     ///
     /// - `idle`: 待機中（未開始、完了済み、または clear() 後）
-    /// - `running(step:)`: 実行中（現在のステップを保持）
+    /// - `running`: 実行中
     /// - `awaitingUserInput(question:)`: ユーザーの回答待ち（インタラクティブモード）
     /// - `paused`: 一時停止（cancel後、再開可能）
     /// - `failed(error:)`: エラー発生（再開可能）
+    ///
+    /// ステップの詳細（thinking, toolCall 等）は `SessionPhase.running(step:)` で
+    /// ストリーム経由のみ配信されます。
     ///
     /// ## 使用例
     ///
@@ -166,9 +169,8 @@ public protocol ConversationalAgentSessionProtocol<Client>: Actor {
     /// switch await session.status {
     /// case .idle:
     ///     showStartButton()
-    /// case .running(let step):
+    /// case .running:
     ///     showProgressIndicator()
-    ///     updateStepDisplay(step)
     /// case .awaitingUserInput(let question):
     ///     showQuestionUI(question)
     /// case .paused:

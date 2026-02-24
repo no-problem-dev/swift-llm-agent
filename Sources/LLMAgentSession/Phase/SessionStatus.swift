@@ -2,63 +2,37 @@ import Foundation
 
 // MARK: - SessionStatus
 
-/// 会話型エージェントセッションの状態
+/// 会話型エージェントセッションのライフサイクル状態
 ///
 /// セッションの現在の状態を表す型パラメータなしの enum です。
 /// Actor 内部の状態管理および外部公開プロパティとして使用します。
 ///
-/// 型付きの出力を含む `SessionPhase<Output>` とは異なり、
-/// この型は出力の型情報を持たないため、セッション全体で一貫して使用できます。
+/// ステップの詳細（thinking, toolCall 等）はストリーム経由の
+/// `SessionPhase.running(step:)` でのみ配信し、この型では保持しません。
 ///
 /// ## 状態遷移図
 ///
 /// ```
-/// idle ─────── run() ────→ running(step:)
-///    │                          │
-///    │                          ├── (ステップ更新) ──→ running(step:)
-///    │                          │
-///    │                          ├── cancel() ──────→ paused
-///    │                          │
-///    │                          ├── ask_user ─────→ awaitingUserInput
-///    │                          │                         │
-///    │                          │                         ├── reply() → running
-///    │                          │                         └── cancel() → paused
-///    │                          │
-///    │                          ├── 正常完了 ─────→ idle
-///    │                          │
-///    │                          └── エラー ────────→ failed
+/// idle ─────── run() ────→ running
+///    │                        │
+///    │                        ├── cancel() ──────→ paused
+///    │                        │
+///    │                        ├── ask_user ─────→ awaitingUserInput
+///    │                        │                         │
+///    │                        │                         ├── reply() → running
+///    │                        │                         └── cancel() → paused
+///    │                        │
+///    │                        ├── 正常完了 ─────→ idle
+///    │                        │
+///    │                        └── エラー ────────→ failed
 ///    │
 ///    └─ resume() ─→ running (会話履歴がある場合のみ)
 ///
-/// paused ────── resume() ───→ running(step:)
+/// paused ────── resume() ───→ running
 ///          └── clear() ────→ idle
 ///
-/// failed ────── resume() ───→ running(step:)
+/// failed ────── resume() ───→ running
 ///          └── clear() ────→ idle
-/// ```
-///
-/// ## 使用例
-///
-/// ```swift
-/// // セッションの状態を確認
-/// if await session.status.canRun {
-///     // 新しいターンを開始可能
-/// }
-///
-/// // 状態に応じた UI 更新
-/// switch await session.status {
-/// case .idle:
-///     showStartButton()
-/// case .running(let step):
-///     showProgressIndicator()
-///     updateStepDisplay(step)
-/// case .awaitingUserInput(let question):
-///     showQuestionUI(question)
-/// case .paused:
-///     showResumeButton()
-/// case .failed(let error):
-///     showError(error)
-/// }
 /// ```
 public enum SessionStatus: Sendable, Equatable {
     /// 待機中（未開始、完了済み、または clear() 後）
@@ -66,12 +40,10 @@ public enum SessionStatus: Sendable, Equatable {
     /// 許可される操作: `run()`
     case idle
 
-    /// 実行中（現在のステップを保持）
+    /// 実行中
     ///
     /// 許可される操作: `interrupt()`, `cancel()`
-    ///
-    /// - Parameter step: 現在実行中のステップ
-    case running(step: AgentStep)
+    case running
 
     /// ユーザーの回答待ち（インタラクティブモード）
     ///
@@ -169,14 +141,6 @@ extension SessionStatus {
         }
     }
 
-    /// 現在のステップ（running の場合のみ）
-    public var currentStep: AgentStep? {
-        if case .running(let step) = self {
-            return step
-        }
-        return nil
-    }
-
     /// 質問文字列（awaitingUserInput の場合のみ）
     public var question: String? {
         if case .awaitingUserInput(let question) = self {
@@ -201,8 +165,8 @@ extension SessionStatus: CustomStringConvertible {
         switch self {
         case .idle:
             return "idle"
-        case .running(let step):
-            return "running(\(step))"
+        case .running:
+            return "running"
         case .awaitingUserInput(let question):
             let truncated = question.prefix(30)
             return "awaitingUserInput(\(truncated)\(question.count > 30 ? "..." : ""))"

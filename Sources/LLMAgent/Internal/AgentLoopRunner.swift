@@ -30,6 +30,8 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
     // MARK: - Public Interface
 
     func nextStep() async throws -> AgentStep<Output>? {
+        try Task.checkCancellation()
+
         if isCancelled {
             return nil
         }
@@ -60,6 +62,7 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
         try await stateManager.incrementStep()
 
         let response = try await sendRequest()
+        try Task.checkCancellation()
         await context.addAssistantResponse(response)
 
         let decision = await terminationPolicy.shouldTerminate(
@@ -107,6 +110,7 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
             var results: [ToolResponse] = []
 
             for call in calls {
+                try Task.checkCancellation()
                 await stateManager.recordToolCall(call)
                 pendingEvents.append(.toolCall(call))
 
@@ -215,7 +219,8 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
                     systemPrompt: systemPrompt,
                     tools: tools,
                     toolChoice: tools.isEmpty ? nil : .auto,
-                    responseSchema: responseSchema
+                    responseSchema: responseSchema,
+                    maxTokens: nil
                 )
             } catch let error as LLMError {
                 throw AgentError.llmError(error)
@@ -229,7 +234,8 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
                     systemPrompt: systemPrompt,
                     tools: ToolSet {},
                     toolChoice: nil,
-                    responseSchema: Output.jsonSchema
+                    responseSchema: Output.jsonSchema,
+                    maxTokens: nil
                 )
             } catch let error as LLMError {
                 throw AgentError.llmError(error)

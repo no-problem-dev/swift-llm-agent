@@ -111,7 +111,7 @@ public actor PlainTextAgentSession<Client: AgentCapableClient>
         input: LLMInput,
         model: Client.Model
     ) -> AsyncThrowingStream<PlainTextSessionPhase, Error> {
-        AsyncThrowingStream { continuation in
+        makeCancellableStream { continuation in
             Task {
                 await self.executeLoop(
                     input: input,
@@ -126,7 +126,7 @@ public actor PlainTextAgentSession<Client: AgentCapableClient>
     nonisolated public func resume(
         model: Client.Model
     ) -> AsyncThrowingStream<PlainTextSessionPhase, Error> {
-        AsyncThrowingStream { continuation in
+        makeCancellableStream { continuation in
             Task {
                 await self.executeResumeLoop(
                     model: model,
@@ -189,7 +189,8 @@ public actor PlainTextAgentSession<Client: AgentCapableClient>
 
         messages.append(input.toLLMMessage())
         let userMessageText = input.prompt.render()
-        updateStatusAndYield(.running(step: .userMessage(userMessageText)), continuation: continuation)
+        status = .running
+        continuation.yield(.running(step: .userMessage(userMessageText)))
 
         await runAgentLoop(model: model, continuation: continuation)
     }
@@ -215,7 +216,8 @@ public actor PlainTextAgentSession<Client: AgentCapableClient>
 
         let continueMsg = "Please continue where you left off."
         messages.append(LLMMessage.user(continueMsg))
-        updateStatusAndYield(.running(step: .userMessage(continueMsg)), continuation: continuation)
+        status = .running
+        continuation.yield(.running(step: .userMessage(continueMsg)))
 
         await runAgentLoop(model: model, continuation: continuation)
     }
@@ -265,6 +267,7 @@ public actor PlainTextAgentSession<Client: AgentCapableClient>
 
         do {
             while step < maxSteps {
+                try Task.checkCancellation()
                 step += 1
 
                 // ソフトリミット注入
@@ -274,26 +277,20 @@ public actor PlainTextAgentSession<Client: AgentCapableClient>
                         + "Wrap up your current work and provide your final answer now. "
                         + "Do not start new tool calls unless absolutely necessary."
                     messages.append(LLMMessage.user(softLimitMsg))
-                    updateStatusAndYield(
-                        .running(step: .interrupted(softLimitMsg)),
-                        continuation: continuation
-                    )
+                    continuation.yield(.running(step: .interrupted(softLimitMsg)))
                 }
 
                 // 割り込みチェックポイント
                 if !interruptQueue.isEmpty {
                     for interruptMsg in interruptQueue {
                         messages.append(LLMMessage.user(interruptMsg))
-                        updateStatusAndYield(
-                            .running(step: .interrupted(interruptMsg)),
-                            continuation: continuation
-                        )
+                        continuation.yield(.running(step: .interrupted(interruptMsg)))
                     }
                     interruptQueue.removeAll()
                 }
 
                 // LLM 呼び出し（toolUse フェーズのみ）
-                updateStatusAndYield(.running(step: .thinking), continuation: continuation)
+                continuation.yield(.running(step: .thinking))
 
                 let response: LLMResponse
                 do {
@@ -303,12 +300,14 @@ public actor PlainTextAgentSession<Client: AgentCapableClient>
                         systemPrompt: systemPrompt,
                         tools: tools,
                         toolChoice: tools.isEmpty ? nil : .auto,
-                        responseSchema: nil
+                        responseSchema: nil,
+                        maxTokens: nil
                     )
                 } catch let error as LLMError {
                     throw ConversationalAgentError.llmError(error)
                 }
 
+                try Task.checkCancellation()
                 addAssistantResponse(response)
 
                 // ツール呼び出しの抽出
@@ -330,26 +329,18 @@ public actor PlainTextAgentSession<Client: AgentCapableClient>
                     var askUserQuestion: String?
 
                     for call in toolCalls {
-                        updateStatusAndYield(
-                            .running(step: .toolCall(call)),
-                            continuation: continuation
-                        )
+                        continuation.yield(.running(step: .toolCall(call)))
 
                         if call.name == "ask_user" {
                             let question = extractQuestion(from: call)
                             askUserCall = call
                             askUserQuestion = question
-                            updateStatusAndYield(
-                                .running(step: .askingUser(question)),
-                                continuation: continuation
-                            )
+                            continuation.yield(.running(step: .askingUser(question)))
                         } else {
                             let result = await executeToolSafely(call)
+                            try Task.checkCancellation()
                             toolResults.append(result)
-                            updateStatusAndYield(
-                                .running(step: .toolResult(result)),
-                                continuation: continuation
-                            )
+                            continuation.yield(.running(step: .toolResult(result)))
                         }
                     }
 
@@ -372,10 +363,7 @@ public actor PlainTextAgentSession<Client: AgentCapableClient>
                                 isError: false
                             )
                             addToolResults([result])
-                            updateStatusAndYield(
-                                .running(step: .toolResult(result)),
-                                continuation: continuation
-                            )
+                            continuation.yield(.running(step: .toolResult(result)))
                             pendingAskUserCall = nil
                         } else {
                             pendingAskUserCall = call
@@ -392,10 +380,8 @@ public actor PlainTextAgentSession<Client: AgentCapableClient>
                                 return
                             }
 
-                            updateStatusAndYield(
-                                .running(step: .userMessage(answer)),
-                                continuation: continuation
-                            )
+                            status = .running
+                            continuation.yield(.running(step: .userMessage(answer)))
 
                             let result = ToolResponse(
                                 callId: call.id,
@@ -404,10 +390,7 @@ public actor PlainTextAgentSession<Client: AgentCapableClient>
                                 isError: false
                             )
                             addToolResults([result])
-                            updateStatusAndYield(
-                                .running(step: .toolResult(result)),
-                                continuation: continuation
-                            )
+                            continuation.yield(.running(step: .toolResult(result)))
                             pendingAskUserCall = nil
                         }
                     }
@@ -430,6 +413,10 @@ public actor PlainTextAgentSession<Client: AgentCapableClient>
                 continuation.finish(throwing: error)
             }
 
+        } catch is CancellationError {
+            status = .paused
+            continuation.yield(.paused)
+            continuation.finish()
         } catch let error as ConversationalAgentError {
             status = .failed(error: error.localizedDescription)
             continuation.yield(.failed(error: error.localizedDescription))
@@ -440,16 +427,6 @@ public actor PlainTextAgentSession<Client: AgentCapableClient>
             continuation.yield(.failed(error: wrappedError.localizedDescription))
             continuation.finish(throwing: wrappedError)
         }
-    }
-
-    // MARK: - Status Update Helper
-
-    private func updateStatusAndYield(
-        _ newStatus: SessionStatus,
-        continuation: AsyncThrowingStream<PlainTextSessionPhase, Error>.Continuation
-    ) {
-        status = newStatus
-        continuation.yield(newStatus.toPlainTextPhase())
     }
 
     // MARK: - Private Helpers
@@ -546,22 +523,3 @@ public actor PlainTextAgentSession<Client: AgentCapableClient>
     }
 }
 
-// MARK: - SessionStatus to PlainTextSessionPhase Conversion
-
-extension SessionStatus {
-    /// SessionStatus を PlainTextSessionPhase に変換
-    func toPlainTextPhase() -> PlainTextSessionPhase {
-        switch self {
-        case .idle:
-            return .idle
-        case .running(let step):
-            return .running(step: step)
-        case .awaitingUserInput(let question):
-            return .awaitingUserInput(question: question)
-        case .paused:
-            return .paused
-        case .failed(let error):
-            return .failed(error: error)
-        }
-    }
-}

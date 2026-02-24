@@ -14,7 +14,7 @@ import LLMTool
 /// ## 使用例
 ///
 /// ```swift
-/// let provider = DuckDuckGoSearchProvider()
+/// let provider = BraveSearchProvider(apiKey: "YOUR_API_KEY")
 /// let results = try await provider.search(query: "Swift concurrency", maxResults: 5)
 /// ```
 public protocol WebSearchProvider: Sendable {
@@ -47,177 +47,17 @@ public struct WebSearchResult: Codable, Sendable {
     }
 }
 
-// MARK: - DuckDuckGoSearchProvider
+// MARK: - UnconfiguredSearchProvider
 
-/// DuckDuckGo HTML APIを使用した検索プロバイダー
+/// APIキー未設定時のフォールバックプロバイダー
 ///
-/// APIキー不要でWeb検索を実行できます。
-/// DuckDuckGoのHTML検索ページをパースして結果を抽出します。
-public final class DuckDuckGoSearchProvider: WebSearchProvider, @unchecked Sendable {
-    // MARK: - Properties
-
-    private let session: URLSession
-    private let timeout: TimeInterval
-
-    // MARK: - Initialization
-
-    /// DuckDuckGoSearchProviderを作成
-    ///
-    /// - Parameter timeout: リクエストのタイムアウト秒数（デフォルト: 15）
-    public init(timeout: TimeInterval = 15) {
-        self.timeout = timeout
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = timeout
-        config.timeoutIntervalForResource = timeout * 2
-        self.session = URLSession(configuration: config)
-    }
-
-    // MARK: - WebSearchProvider
+/// 検索実行時に設定方法を案内するエラーを返します。
+/// ビルドは通るが、実行時にユーザーに設定を促します。
+public struct UnconfiguredSearchProvider: WebSearchProvider {
+    public init() {}
 
     public func search(query: String, maxResults: Int) async throws -> [WebSearchResult] {
-        guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
-            throw WebSearchError.invalidQuery(query)
-        }
-
-        let urlString = "https://html.duckduckgo.com/html/?q=\(encodedQuery)"
-        guard let url = URL(string: urlString) else {
-            throw WebSearchError.invalidQuery(query)
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue(
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
-            forHTTPHeaderField: "User-Agent"
-        )
-        request.setValue("text/html", forHTTPHeaderField: "Accept")
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw WebSearchError.invalidResponse
-        }
-
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw WebSearchError.httpError(statusCode: httpResponse.statusCode)
-        }
-
-        guard let html = String(data: data, encoding: .utf8)
-                ?? String(data: data, encoding: .ascii) else {
-            throw WebSearchError.encodingError
-        }
-
-        let results = Self.parseResults(from: html, maxResults: maxResults)
-        return results
-    }
-
-    // MARK: - HTML Parsing
-
-    /// DuckDuckGoのHTML検索結果をパース
-    static func parseResults(from html: String, maxResults: Int) -> [WebSearchResult] {
-        var results: [WebSearchResult] = []
-
-        // DuckDuckGo HTML API returns results in <div class="result"> blocks
-        // Each contains <a class="result__a"> for title/URL and
-        // <a class="result__snippet"> for the snippet
-        let resultPattern = #"<div[^>]*class="[^"]*result\b[^"]*"[^>]*>([\s\S]*?)</div>\s*(?=<div[^>]*class="[^"]*result\b|$)"#
-        guard let resultRegex = try? NSRegularExpression(pattern: resultPattern, options: []) else {
-            return results
-        }
-
-        let resultMatches = resultRegex.matches(in: html, range: NSRange(html.startIndex..., in: html))
-
-        for match in resultMatches {
-            guard results.count < maxResults else { break }
-            guard let blockRange = Range(match.range(at: 1), in: html) else { continue }
-            let block = String(html[blockRange])
-
-            // タイトルとURLを抽出
-            let linkPattern = #"<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)</a>"#
-            guard let linkRegex = try? NSRegularExpression(pattern: linkPattern, options: []),
-                  let linkMatch = linkRegex.firstMatch(in: block, range: NSRange(block.startIndex..., in: block)),
-                  let urlRange = Range(linkMatch.range(at: 1), in: block),
-                  let titleRange = Range(linkMatch.range(at: 2), in: block) else {
-                continue
-            }
-
-            let rawURL = String(block[urlRange])
-            let rawTitle = String(block[titleRange])
-
-            // URLをデコード（DuckDuckGoはリダイレクトURLを使うことがある）
-            let resolvedURL = Self.resolveURL(rawURL)
-
-            // 有効なURLかチェック
-            guard resolvedURL.hasPrefix("http://") || resolvedURL.hasPrefix("https://") else {
-                continue
-            }
-
-            // スニペットを抽出
-            let snippetPattern = #"<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)</a>"#
-            let snippet: String
-            if let snippetRegex = try? NSRegularExpression(pattern: snippetPattern, options: []),
-               let snippetMatch = snippetRegex.firstMatch(in: block, range: NSRange(block.startIndex..., in: block)),
-               let snippetRange = Range(snippetMatch.range(at: 1), in: block) {
-                snippet = Self.stripHTML(String(block[snippetRange]))
-            } else {
-                snippet = ""
-            }
-
-            let title = Self.stripHTML(rawTitle)
-            guard !title.isEmpty else { continue }
-
-            results.append(WebSearchResult(
-                title: title,
-                url: resolvedURL,
-                snippet: snippet
-            ))
-        }
-
-        return results
-    }
-
-    /// DuckDuckGoのリダイレクトURLを解決
-    private static func resolveURL(_ rawURL: String) -> String {
-        // DuckDuckGo uses //duckduckgo.com/l/?uddg=<encoded_url>&rut=... format
-        if rawURL.contains("duckduckgo.com/l/") || rawURL.contains("uddg=") {
-            // uddg パラメータからURLを抽出
-            if let range = rawURL.range(of: "uddg="),
-               let endRange = rawURL[range.upperBound...].range(of: "&") {
-                let encoded = String(rawURL[range.upperBound..<endRange.lowerBound])
-                if let decoded = encoded.removingPercentEncoding {
-                    return decoded
-                }
-            } else if let range = rawURL.range(of: "uddg=") {
-                let encoded = String(rawURL[range.upperBound...])
-                if let decoded = encoded.removingPercentEncoding {
-                    return decoded
-                }
-            }
-        }
-        return rawURL
-    }
-
-    /// HTMLタグを除去してプレーンテキストに変換
-    private static func stripHTML(_ html: String) -> String {
-        var text = html
-        // HTMLタグを除去
-        if let regex = try? NSRegularExpression(pattern: "<[^>]+>", options: []) {
-            text = regex.stringByReplacingMatches(
-                in: text,
-                range: NSRange(text.startIndex..., in: text),
-                withTemplate: ""
-            )
-        }
-        // HTMLエンティティを基本的にデコード
-        let entities: [(String, String)] = [
-            ("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"),
-            ("&quot;", "\""), ("&apos;", "'"), ("&#39;", "'"),
-            ("&nbsp;", " "),
-        ]
-        for (entity, replacement) in entities {
-            text = text.replacingOccurrences(of: entity, with: replacement)
-        }
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        throw WebSearchError.providerNotConfigured
     }
 }
 
@@ -226,18 +66,27 @@ public final class DuckDuckGoSearchProvider: WebSearchProvider, @unchecked Senda
 /// Web検索ツールを提供するToolKit
 ///
 /// Web検索を実行し、タイトル・URL・スニペットの一覧を返します。
-/// デフォルトではDuckDuckGoをバックエンドとして使用します（APIキー不要）。
+/// Brave Search API または Serper API をバックエンドとして使用します。
 ///
 /// ## 使用例
 ///
 /// ```swift
+/// // Brave Search API
 /// let tools = ToolSet {
-///     WebSearchToolKit()
+///     WebSearchToolKit.brave(apiKey: "BRAVE_KEY")
 /// }
 ///
-/// // カスタムプロバイダーを使用
+/// // Serper API（日本語最適化）
 /// let tools = ToolSet {
-///     WebSearchToolKit(provider: MyCustomSearchProvider())
+///     WebSearchToolKit.serper(apiKey: "SERPER_KEY", gl: "jp", hl: "ja")
+/// }
+///
+/// // フォールバックチェーン
+/// let tools = ToolSet {
+///     WebSearchToolKit.withFallback(
+///         primary: BraveSearchProvider(apiKey: "BRAVE_KEY"),
+///         fallback: SerperSearchProvider(apiKey: "SERPER_KEY")
+///     )
 /// }
 /// ```
 ///
@@ -256,9 +105,77 @@ public final class WebSearchToolKit: ToolKit, @unchecked Sendable {
 
     /// WebSearchToolKitを作成
     ///
-    /// - Parameter provider: 検索プロバイダー（デフォルト: DuckDuckGo）
+    /// - Parameter provider: 検索プロバイダー（デフォルト: UnconfiguredSearchProvider）
     public init(provider: (any WebSearchProvider)? = nil) {
-        self.provider = provider ?? DuckDuckGoSearchProvider()
+        self.provider = provider ?? UnconfiguredSearchProvider()
+    }
+
+    // MARK: - Factory Methods
+
+    /// Brave Search APIプロバイダーでWebSearchToolKitを作成
+    ///
+    /// - Parameters:
+    ///   - apiKey: Brave Search APIキー
+    ///   - searchLang: 検索言語（例: "ja"）
+    ///   - country: 国コード（例: "JP"）
+    ///   - resilience: レジリエンス設定（nil でレジリエンスなし）
+    /// - Returns: 設定済みのWebSearchToolKit
+    public static func brave(
+        apiKey: String,
+        searchLang: String? = nil,
+        country: String? = nil,
+        resilience: SearchResilienceConfiguration? = .default
+    ) -> WebSearchToolKit {
+        let base = BraveSearchProvider(apiKey: apiKey, searchLang: searchLang, country: country)
+        if let resilience {
+            return WebSearchToolKit(provider: ResilientSearchProvider(provider: base, configuration: resilience))
+        }
+        return WebSearchToolKit(provider: base)
+    }
+
+    /// Serper APIプロバイダーでWebSearchToolKitを作成
+    ///
+    /// - Parameters:
+    ///   - apiKey: Serper APIキー
+    ///   - gl: 地域コード（例: "jp"）
+    ///   - hl: 言語コード（例: "ja"）
+    ///   - resilience: レジリエンス設定（nil でレジリエンスなし）
+    /// - Returns: 設定済みのWebSearchToolKit
+    public static func serper(
+        apiKey: String,
+        gl: String? = nil,
+        hl: String? = nil,
+        resilience: SearchResilienceConfiguration? = .default
+    ) -> WebSearchToolKit {
+        let base = SerperSearchProvider(apiKey: apiKey, gl: gl, hl: hl)
+        if let resilience {
+            return WebSearchToolKit(provider: ResilientSearchProvider(provider: base, configuration: resilience))
+        }
+        return WebSearchToolKit(provider: base)
+    }
+
+    /// フォールバックチェーン付きWebSearchToolKitを作成
+    ///
+    /// - Parameters:
+    ///   - primary: プライマリプロバイダー
+    ///   - fallback: フォールバックプロバイダー
+    ///   - resilience: 各プロバイダーに適用するレジリエンス設定（nil でレジリエンスなし）
+    /// - Returns: 設定済みのWebSearchToolKit
+    public static func withFallback(
+        primary: any WebSearchProvider,
+        fallback: any WebSearchProvider,
+        resilience: SearchResilienceConfiguration? = .default
+    ) -> WebSearchToolKit {
+        let wrappedPrimary: any WebSearchProvider
+        let wrappedFallback: any WebSearchProvider
+        if let resilience {
+            wrappedPrimary = ResilientSearchProvider(provider: primary, configuration: resilience)
+            wrappedFallback = ResilientSearchProvider(provider: fallback, configuration: resilience)
+        } else {
+            wrappedPrimary = primary
+            wrappedFallback = fallback
+        }
+        return WebSearchToolKit(provider: FallbackSearchProvider(providers: [wrappedPrimary, wrappedFallback]))
     }
 
     // MARK: - ToolKit Protocol
@@ -340,6 +257,9 @@ public enum WebSearchError: Error, LocalizedError {
     case httpError(statusCode: Int)
     case encodingError
     case noResults
+    case providerNotConfigured
+    case circuitBreakerOpen
+    case allProvidersFailed([Error])
 
     public var errorDescription: String? {
         switch self {
@@ -360,6 +280,13 @@ public enum WebSearchError: Error, LocalizedError {
             return "Cannot decode the search results. Try again."
         case .noResults:
             return "No results found. Try different keywords or a broader query."
+        case .providerNotConfigured:
+            return "No search provider configured. Use WebSearchToolKit.brave(apiKey:) or WebSearchToolKit.serper(apiKey:) to configure a search provider."
+        case .circuitBreakerOpen:
+            return "Search provider is temporarily unavailable due to repeated failures. Try again later."
+        case .allProvidersFailed(let errors):
+            let descriptions = errors.map { $0.localizedDescription }.joined(separator: "; ")
+            return "All search providers failed: \(descriptions)"
         }
     }
 }

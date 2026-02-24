@@ -49,6 +49,7 @@ extension AgentPreset {
 ///
 /// 情報収集、分析、統合タスク向けに最適化されています。
 /// CalculatorとDateTimeツールを含み、データの計算や日時処理が可能です。
+/// Web検索にはBrave/Serper等のAPIキー設定が必要です（`WebSearchToolKit.brave(apiKey:)`等）。
 ///
 /// ## 使用例
 ///

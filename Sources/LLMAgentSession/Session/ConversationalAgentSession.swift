@@ -195,7 +195,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         model: Client.Model,
         outputType: Output.Type = Output.self
     ) -> AsyncThrowingStream<SessionPhase<Output>, Error> {
-        AsyncThrowingStream { continuation in
+        makeCancellableStream { continuation in
             Task {
                 await self.executeLoop(
                     input: input,
@@ -213,7 +213,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         model: Client.Model,
         outputType: Output.Type
     ) -> AsyncThrowingStream<SessionPhase<Output>, Error> {
-        AsyncThrowingStream { continuation in
+        makeCancellableStream { continuation in
             Task {
                 await self.executeResumeLoop(
                     model: model,
@@ -252,7 +252,8 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         messages.append(LLMMessage.user(continueMsg))
 
         // userMessage ステップを発行
-        updateStatusAndYield(.running(step: .userMessage(continueMsg)), continuation: continuation)
+        status = .running
+        continuation.yield(.running(step: .userMessage(continueMsg)))
 
         await runAgentLoop(
             model: model,
@@ -278,7 +279,8 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
 
         // userMessage ステップを発行
         let userMessageText = input.prompt.render()
-        updateStatusAndYield(.running(step: .userMessage(userMessageText)), continuation: continuation)
+        status = .running
+        continuation.yield(.running(step: .userMessage(userMessageText)))
 
         await runAgentLoop(
             model: model,
@@ -339,6 +341,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
 
         do {
             while step < maxSteps {
+                try Task.checkCancellation()
                 step += 1
 
                 // ソフトリミット注入: まとめを促すメッセージを会話履歴に追加
@@ -347,20 +350,20 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                         "Wrap up your current work and produce your final output now. " +
                         "Do not start new tool calls unless absolutely necessary."
                     messages.append(LLMMessage.user(softLimitMsg))
-                    updateStatusAndYield(.running(step: .interrupted(softLimitMsg)), continuation: continuation)
+                    continuation.yield(.running(step: .interrupted(softLimitMsg)))
                 }
 
                 // 割り込みチェックポイント（toolUse フェーズのみ）
                 if case .toolUse = loopPhase, !interruptQueue.isEmpty {
                     for interruptMsg in interruptQueue {
                         messages.append(LLMMessage.user(interruptMsg))
-                        updateStatusAndYield(.running(step: .interrupted(interruptMsg)), continuation: continuation)
+                        continuation.yield(.running(step: .interrupted(interruptMsg)))
                     }
                     interruptQueue.removeAll()
                 }
 
                 // LoopPhaseに応じて LLM 呼び出し
-                updateStatusAndYield(.running(step: .thinking), continuation: continuation)
+                continuation.yield(.running(step: .thinking))
 
                 let response: LLMResponse
                 do {
@@ -375,16 +378,14 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                             tools: tools,
                             toolChoice: tools.isEmpty ? nil : .auto,
                             responseSchema: nil,
-                            thinkingMode: configuration.thinkingMode
+                            thinkingMode: configuration.thinkingMode,
+                            maxTokens: nil
                         ) {
                             switch event {
                             case .delta(let delta):
                                 switch delta {
                                 case .thinkingDelta(let text):
-                                    updateStatusAndYield(
-                                        .running(step: .thinkingDelta(text)),
-                                        continuation: continuation
-                                    )
+                                    continuation.yield(.running(step: .thinkingDelta(text)))
                                 case .textDelta:
                                     break
                                 }
@@ -395,6 +396,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                         guard let completed = fullResponse else {
                             throw ConversationalAgentError.invalidState("No response received from streaming")
                         }
+                        try Task.checkCancellation()
                         response = completed
 
                     case .finalOutput:
@@ -407,16 +409,14 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                             tools: ToolSet {},
                             toolChoice: nil,
                             responseSchema: Output.jsonSchema,
-                            thinkingMode: configuration.thinkingMode
+                            thinkingMode: configuration.thinkingMode,
+                            maxTokens: nil
                         ) {
                             switch event {
                             case .delta(let delta):
                                 switch delta {
                                 case .thinkingDelta(let text):
-                                    updateStatusAndYield(
-                                        .running(step: .thinkingDelta(text)),
-                                        continuation: continuation
-                                    )
+                                    continuation.yield(.running(step: .thinkingDelta(text)))
                                 case .textDelta:
                                     break
                                 }
@@ -427,6 +427,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                         guard let completed = fullResponse else {
                             throw ConversationalAgentError.invalidState("No response received from streaming")
                         }
+                        try Task.checkCancellation()
                         response = completed
                     }
                 } catch let error as LLMError {
@@ -477,19 +478,20 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                         var askUserQuestion: String?
 
                         for call in toolCalls {
-                            updateStatusAndYield(.running(step: .toolCall(call)), continuation: continuation)
+                            continuation.yield(.running(step: .toolCall(call)))
 
                             // ask_user ツールの場合は特別処理
                             if call.name == "ask_user" {
                                 let question = extractQuestion(from: call)
                                 askUserCall = call
                                 askUserQuestion = question
-                                updateStatusAndYield(.running(step: .askingUser(question)), continuation: continuation)
+                                continuation.yield(.running(step: .askingUser(question)))
                                 // ask_user の結果は後で追加するので、ここでは toolResults に追加しない
                             } else {
                                 let result = await executeToolSafely(call)
+                                try Task.checkCancellation()
                                 toolResults.append(result)
-                                updateStatusAndYield(.running(step: .toolResult(result)), continuation: continuation)
+                                continuation.yield(.running(step: .toolResult(result)))
                             }
                         }
 
@@ -513,7 +515,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                     isError: false
                                 )
                                 addToolResults([result])
-                                updateStatusAndYield(.running(step: .toolResult(result)), continuation: continuation)
+                                continuation.yield(.running(step: .toolResult(result)))
                                 pendingAskUserCall = nil
                             } else {
                                 // 通常の ask_user フロー
@@ -535,7 +537,8 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                 }
 
                                 // running に戻る
-                                updateStatusAndYield(.running(step: .userMessage(answer)), continuation: continuation)
+                                status = .running
+                                continuation.yield(.running(step: .userMessage(answer)))
 
                                 // ツール結果として回答を追加
                                 let result = ToolResponse(
@@ -545,7 +548,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                     isError: false
                                 )
                                 addToolResults([result])
-                                updateStatusAndYield(.running(step: .toolResult(result)), continuation: continuation)
+                                continuation.yield(.running(step: .toolResult(result)))
                                 pendingAskUserCall = nil
                             }
                             // ループ継続（次のイテレーションで LLM に回答を渡す）
@@ -593,6 +596,10 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                 continuation.finish(throwing: error)
             }
 
+        } catch is CancellationError {
+            status = .paused
+            continuation.yield(.paused)
+            continuation.finish()
         } catch let error as ConversationalAgentError {
             status = .failed(error: error.localizedDescription)
             continuation.yield(.failed(error: error.localizedDescription))
@@ -603,17 +610,6 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
             continuation.yield(.failed(error: wrappedError.localizedDescription))
             continuation.finish(throwing: wrappedError)
         }
-    }
-
-    // MARK: - Status Update Helper
-
-    /// ステータスを更新し、対応するフェーズをストリームに送信
-    private func updateStatusAndYield<Output: StructuredProtocol>(
-        _ newStatus: SessionStatus,
-        continuation: AsyncThrowingStream<SessionPhase<Output>, Error>.Continuation
-    ) {
-        status = newStatus
-        continuation.yield(newStatus.toPhase())
     }
 
     // MARK: - Private Helpers
@@ -749,26 +745,3 @@ private extension JSONDecoder {
     }()
 }
 
-// MARK: - SessionStatus to SessionPhase Conversion
-
-extension SessionStatus {
-    /// SessionStatus を SessionPhase に変換
-    ///
-    /// - Note: `SessionPhase.completed(output:)` は出力値が必要なため、
-    ///   この変換では `SessionStatus.idle` から `SessionPhase.idle` への変換のみ行います。
-    ///   完了時は呼び出し側で直接 `SessionPhase.completed(output:)` を使用してください。
-    func toPhase<Output: StructuredProtocol>() -> SessionPhase<Output> {
-        switch self {
-        case .idle:
-            return .idle
-        case .running(let step):
-            return .running(step: step)
-        case .awaitingUserInput(let question):
-            return .awaitingUserInput(question: question)
-        case .paused:
-            return .paused
-        case .failed(let error):
-            return .failed(error: error)
-        }
-    }
-}
