@@ -336,7 +336,7 @@ public enum AgentBehaviors {
     public static let webResearchWorkflow = PromptComponent.behavior(
         "When researching online: ALWAYS use web_search first to find relevant URLs. " +
         "NEVER guess or fabricate URLs — this leads to 404 errors and wastes steps. " +
-        "The correct workflow is: (1) web_search to discover URLs, (2) fetch_page or fetch_url " +
+        "The correct workflow is: (1) web_search to discover URLs, (2) fetch " +
         "to retrieve content from discovered URLs. If a fetch fails, search for alternative sources " +
         "rather than retrying the same URL."
     )

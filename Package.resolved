@@ -1,5 +1,5 @@
 {
-  "originHash" : "0d210df069e34d0d406d0041dad5aa862ef7ca6e2a508a1e7558967270a01919",
+  "originHash" : "440992e9511ebdb6f2fbc394fc9c661ac1aecbda2c93b2eac45a1d71deafd8b1",
   "pins" : [
     {
       "identity" : "eventsource",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "bd64824505da71a1a403adb221f6e25413c0bc7f",
         "version" : "1.4.0"
+      }
+    },
+    {
+      "identity" : "lrucache",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/nicklockwood/LRUCache.git",
+      "state" : {
+        "revision" : "cb5b2bd0da83ad29c0bec762d39f41c8ad0eaf3e",
+        "version" : "1.2.1"
       }
     },
     {
@@ -56,15 +65,6 @@
       }
     },
     {
-      "identity" : "swift-llm-client",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/no-problem-dev/swift-llm-client.git",
-      "state" : {
-        "revision" : "b7d92b3d3fa68d291f63c30252c03ebca1ef67e5",
-        "version" : "1.1.0"
-      }
-    },
-    {
       "identity" : "swift-log",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-log.git",
@@ -107,6 +107,15 @@
       "state" : {
         "revision" : "7c6ad0fc39d0763e0b699210e4124afd5041c5df",
         "version" : "1.6.4"
+      }
+    },
+    {
+      "identity" : "swiftsoup",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/scinfu/SwiftSoup.git",
+      "state" : {
+        "revision" : "d86f244ed497d48012782e2f59c985a55e77b3f5",
+        "version" : "2.11.3"
       }
     }
   ],

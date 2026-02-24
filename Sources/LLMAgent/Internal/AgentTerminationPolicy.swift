@@ -161,6 +161,13 @@ internal struct StandardTerminationPolicy: AgentTerminationPolicy {
             }
             return .terminateImmediately(.completed)
 
+        case .modelContextWindowExceeded:
+            // コンテキストウィンドウ超過の場合、テキストがあれば出力試行
+            if let textContent = response.extractTextContent(), !textContent.isEmpty {
+                return .terminateWithOutput(textContent)
+            }
+            return .terminateImmediately(.unexpectedStopReason("model_context_window_exceeded"))
+
         case nil:
             // stopReason がない場合（異常ケース）
             // ツール呼び出しがあればそれを処理

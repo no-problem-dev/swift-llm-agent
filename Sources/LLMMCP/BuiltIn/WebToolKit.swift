@@ -10,6 +10,7 @@ import LLMTool
 /// Web操作ツールを提供するToolKit
 ///
 /// URLからコンテンツを取得するツールを提供します。
+/// HTMLレスポンスは自動でMarkdown形式に変換されます。
 ///
 /// ## 使用例
 ///
@@ -22,14 +23,18 @@ import LLMTool
 /// let restrictedTools = ToolSet {
 ///     WebToolKit(allowedDomains: ["api.example.com", "data.example.com"])
 /// }
+///
+/// // カスタム抽出器を使用
+/// let customTools = ToolSet {
+///     WebToolKit(extractor: MyCustomExtractor())
+/// }
 /// ```
 ///
 /// ## 提供されるツール
 ///
-/// - `fetch_url`: URLからコンテンツを取得（生のテキスト）
+/// - `fetch`: URLからコンテンツを取得（HTML自動Markdown変換、ページネーション対応）
 /// - `fetch_json`: URLからJSONを取得してパース
 /// - `fetch_headers`: URLからHTTPヘッダーのみを取得
-/// - `fetch_page`: Webページからテキストを抽出（HTML解析、ページネーション対応）
 public final class WebToolKit: ToolKit, @unchecked Sendable {
     // MARK: - Properties
 
@@ -47,6 +52,9 @@ public final class WebToolKit: ToolKit, @unchecked Sendable {
     /// 最大コンテンツサイズ（バイト）
     private let maxContentSize: Int
 
+    /// コンテンツ抽出器
+    private let extractor: any WebContentExtractor
+
     // MARK: - Initialization
 
     /// WebToolKitを作成
@@ -55,14 +63,17 @@ public final class WebToolKit: ToolKit, @unchecked Sendable {
     ///   - allowedDomains: 許可するドメインの配列（nilの場合は全て許可）
     ///   - timeout: リクエストのタイムアウト秒数（デフォルト: 30）
     ///   - maxContentSize: 最大取得サイズ（デフォルト: 5MB）
+    ///   - extractor: コンテンツ抽出器（デフォルト: SwiftSoupContentExtractor）
     public init(
         allowedDomains: [String]? = nil,
         timeout: TimeInterval = 30,
-        maxContentSize: Int = 5 * 1024 * 1024
+        maxContentSize: Int = 5 * 1024 * 1024,
+        extractor: (any WebContentExtractor)? = nil
     ) {
         self.allowedDomains = allowedDomains.map { Set($0.map { $0.lowercased() }) }
         self.timeout = timeout
         self.maxContentSize = maxContentSize
+        self.extractor = extractor ?? SwiftSoupContentExtractor()
 
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = timeout
@@ -74,10 +85,9 @@ public final class WebToolKit: ToolKit, @unchecked Sendable {
 
     public var tools: [any Tool] {
         [
-            fetchURLTool,
+            fetchTool,
             fetchJSONTool,
             fetchHeadersTool,
-            fetchPageTool
         ]
     }
 
@@ -188,13 +198,35 @@ public final class WebToolKit: ToolKit, @unchecked Sendable {
         return url
     }
 
+    // MARK: - HTML Detection
+
+    /// コンテンツがHTMLかどうかを判定
+    ///
+    /// Content-Typeヘッダーと先頭のHTMLタグの両方で判定します。
+    static func isHTMLContent(contentType: String?, content: String) -> Bool {
+        // Content-Typeベースの判定
+        if let ct = contentType?.lowercased() {
+            if ct.contains("text/html") || ct.contains("application/xhtml+xml") {
+                return true
+            }
+        }
+
+        // 先頭タグベースの判定
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if trimmed.hasPrefix("<!doctype html") || trimmed.hasPrefix("<html") {
+            return true
+        }
+
+        return false
+    }
+
     // MARK: - Tool Definitions
 
-    /// fetch_url ツール
-    private var fetchURLTool: BuiltInTool {
+    /// fetch ツール（統合版）
+    private var fetchTool: BuiltInTool {
         BuiltInTool(
-            name: "fetch_url",
-            description: "Fetch content from a URL. Returns the raw text content.",
+            name: "fetch",
+            description: "Fetch a URL and return its content. For HTML pages, automatically extracts readable content as Markdown. Use `raw: true` to get the original unprocessed content. Supports pagination with start_index/max_length for large content.",
             inputSchema: .object(
                 properties: [
                     "url": .string(description: "The URL to fetch content from"),
@@ -205,21 +237,33 @@ public final class WebToolKit: ToolKit, @unchecked Sendable {
                         required: [],
                         additionalProperties: true
                     ),
-                    "body": .string(description: "Request body (for POST/PUT)")
+                    "body": .string(description: "Request body (for POST/PUT)"),
+                    "raw": .boolean(description: "If true, return raw content without Markdown extraction (default: false)"),
+                    "max_length": .integer(description: "Maximum characters to return (default: 5000)"),
+                    "start_index": .integer(description: "Start position for pagination. Use when previous response indicated more content available (default: 0)"),
                 ],
                 required: ["url"]
             ),
             annotations: ToolAnnotations(
-                title: "Fetch URL",
+                title: "Fetch",
                 readOnlyHint: true,
                 openWorldHint: true
             )
         ) { [self] data in
-            let input = try JSONDecoder().decode(FetchURLInput.self, from: data)
+            let input = try JSONDecoder().decode(FetchInput.self, from: data)
             let url = try validateURL(input.url)
+            let maxLength = input.maxLength ?? 5000
+            let startIndex = input.startIndex ?? 0
+            let raw = input.raw ?? false
 
             var request = URLRequest(url: url)
             request.httpMethod = input.method ?? "GET"
+            request.setValue(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+                forHTTPHeaderField: "User-Agent"
+            )
+            request.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
+            request.setValue("ja,en;q=0.9", forHTTPHeaderField: "Accept-Language")
 
             if let headers = input.headers {
                 for (key, value) in headers {
@@ -250,13 +294,47 @@ public final class WebToolKit: ToolKit, @unchecked Sendable {
                 throw WebToolKitError.encodingError
             }
 
-            let result = FetchResult(
+            // HTML判定 + Markdown抽出
+            let title: String?
+            let fullText: String
+
+            if !raw && Self.isHTMLContent(contentType: contentType, content: content) {
+                let extracted = try extractor.extract(html: content, url: url)
+                title = extracted.title
+                fullText = extracted.content
+            } else {
+                title = nil
+                fullText = content
+            }
+
+            // ページネーション処理
+            let totalLength = fullText.count
+            let safeStartIndex = min(startIndex, max(0, totalLength - 1))
+            let endIndex = min(safeStartIndex + maxLength, totalLength)
+            let hasMore = endIndex < totalLength
+
+            let paginatedContent: String
+            if safeStartIndex < totalLength {
+                let start = fullText.index(fullText.startIndex, offsetBy: safeStartIndex)
+                let end = fullText.index(fullText.startIndex, offsetBy: endIndex)
+                paginatedContent = String(fullText[start..<end])
+            } else {
+                paginatedContent = ""
+            }
+
+            var result = FetchResult(
                 url: url.absoluteString,
-                statusCode: httpResponse.statusCode,
-                contentType: contentType,
-                contentLength: responseData.count,
-                content: content
+                title: title,
+                content: paginatedContent,
+                contentLength: totalLength,
+                startIndex: safeStartIndex,
+                hasMore: hasMore,
+                nextHint: nil
             )
+
+            if hasMore {
+                result.nextHint = "Call fetch with start_index=\(endIndex) to continue reading."
+            }
 
             let output = try JSONEncoder().encode(result)
             return .json(output)
@@ -288,7 +366,7 @@ public final class WebToolKit: ToolKit, @unchecked Sendable {
                 openWorldHint: true
             )
         ) { [self] data in
-            let input = try JSONDecoder().decode(FetchURLInput.self, from: data)
+            let input = try JSONDecoder().decode(FetchInput.self, from: data)
             let url = try validateURL(input.url)
 
             var request = URLRequest(url: url)
@@ -325,17 +403,11 @@ public final class WebToolKit: ToolKit, @unchecked Sendable {
             // JSONとしてパース
             let jsonObject = try JSONSerialization.jsonObject(with: responseData)
 
-            let result = FetchJSONResult(
-                url: url.absoluteString,
-                statusCode: httpResponse.statusCode,
-                data: jsonObject
-            )
-
             // カスタムエンコード（dataフィールドはAny型なので）
             let resultDict: [String: Any] = [
-                "url": result.url,
-                "statusCode": result.statusCode,
-                "data": result.data
+                "url": url.absoluteString,
+                "statusCode": httpResponse.statusCode,
+                "data": jsonObject
             ]
 
             let output = try JSONSerialization.data(withJSONObject: resultDict)
@@ -389,286 +461,54 @@ public final class WebToolKit: ToolKit, @unchecked Sendable {
             return .json(output)
         }
     }
-
-    /// fetch_page ツール（Webページからテキストを抽出）
-    private var fetchPageTool: BuiltInTool {
-        BuiltInTool(
-            name: "fetch_page",
-            description: "Fetch a web page and extract readable text content. Removes scripts, styles, navigation, and other non-essential elements. Use start_index for pagination when content is truncated.",
-            inputSchema: .object(
-                properties: [
-                    "url": .string(description: "The URL of the web page to fetch"),
-                    "max_length": .integer(description: "Maximum characters to return (default: 5000)"),
-                    "start_index": .integer(description: "Start position for pagination. Use when previous response indicated more content available (default: 0)")
-                ],
-                required: ["url"]
-            ),
-            annotations: ToolAnnotations(
-                title: "Fetch Web Page",
-                readOnlyHint: true,
-                openWorldHint: true
-            )
-        ) { [self] data in
-            let input = try JSONDecoder().decode(FetchPageInput.self, from: data)
-            let url = try validateURL(input.url)
-            let maxLength = input.maxLength ?? 5000
-            let startIndex = input.startIndex ?? 0
-
-            var request = URLRequest(url: url)
-            request.httpMethod = "GET"
-            request.setValue(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
-                forHTTPHeaderField: "User-Agent"
-            )
-            request.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
-            request.setValue("ja,en;q=0.9", forHTTPHeaderField: "Accept-Language")
-
-            let (responseData, response) = try await session.data(for: request)
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw WebToolKitError.invalidResponse
-            }
-
-            guard (200...299).contains(httpResponse.statusCode) else {
-                throw WebToolKitError.httpError(statusCode: httpResponse.statusCode)
-            }
-
-            guard responseData.count <= maxContentSize else {
-                throw WebToolKitError.contentTooLarge(size: responseData.count, maxSize: maxContentSize)
-            }
-
-            let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type")
-            guard let html = decodeResponseData(responseData, contentType: contentType) else {
-                throw WebToolKitError.encodingError
-            }
-
-            // タイトルとテキストを抽出
-            let title = HTMLContentExtractor.extractTitle(from: html)
-            let fullText = HTMLContentExtractor.extractText(from: html)
-
-            // ページネーション処理
-            let totalLength = fullText.count
-            let safeStartIndex = min(startIndex, max(0, totalLength - 1))
-
-            let endIndex = min(safeStartIndex + maxLength, totalLength)
-            let hasMore = endIndex < totalLength
-
-            let content: String
-            if safeStartIndex < totalLength {
-                let start = fullText.index(fullText.startIndex, offsetBy: safeStartIndex)
-                let end = fullText.index(fullText.startIndex, offsetBy: endIndex)
-                content = String(fullText[start..<end])
-            } else {
-                content = ""
-            }
-
-            let result = FetchPageResult(
-                url: url.absoluteString,
-                title: title,
-                content: content,
-                contentLength: totalLength,
-                startIndex: safeStartIndex,
-                hasMore: hasMore
-            )
-
-            let output = try JSONEncoder().encode(result)
-            return .json(output)
-        }
-    }
 }
 
 // MARK: - Input Types
 
-private struct FetchURLInput: Codable {
+private struct FetchInput: Codable {
     var url: String
     var method: String?
     var headers: [String: String]?
     var body: String?
+    var raw: Bool?
+    var maxLength: Int?
+    var startIndex: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case url, method, headers, body, raw
+        case maxLength = "max_length"
+        case startIndex = "start_index"
+    }
 }
 
 private struct FetchHeadersInput: Codable {
     var url: String
 }
 
-private struct FetchPageInput: Codable {
-    var url: String
-    var maxLength: Int?
-    var startIndex: Int?
-
-    enum CodingKeys: String, CodingKey {
-        case url
-        case maxLength = "max_length"
-        case startIndex = "start_index"
-    }
-}
-
 // MARK: - Result Types
 
 private struct FetchResult: Codable {
-    var url: String
-    var statusCode: Int
-    var contentType: String?
-    var contentLength: Int
-    var content: String
-}
-
-private struct FetchJSONResult {
-    var url: String
-    var statusCode: Int
-    var data: Any
-}
-
-private struct FetchHeadersResult: Codable {
-    var url: String
-    var statusCode: Int
-    var headers: [String: String]
-}
-
-private struct FetchPageResult: Codable {
     var url: String
     var title: String?
     var content: String
     var contentLength: Int
     var startIndex: Int
     var hasMore: Bool
+    var nextHint: String?
 
     enum CodingKeys: String, CodingKey {
-        case url
-        case title
-        case content
+        case url, title, content
         case contentLength = "content_length"
         case startIndex = "start_index"
         case hasMore = "has_more"
+        case nextHint = "next_hint"
     }
 }
 
-// MARK: - HTML Content Extraction
-
-/// HTMLからテキストを抽出するためのヘルパー
-private enum HTMLContentExtractor {
-
-    /// HTMLからタイトルを抽出
-    static func extractTitle(from html: String) -> String? {
-        let pattern = #"<title[^>]*>([^<]+)</title>"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
-              let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
-              let titleRange = Range(match.range(at: 1), in: html) else {
-            return nil
-        }
-
-        return String(html[titleRange])
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .decodingHTMLEntities()
-    }
-
-    /// HTMLからメインコンテンツのテキストを抽出
-    static func extractText(from html: String) -> String {
-        var text = html
-
-        // 不要なタグを除去（script, style, head, nav, footer, コメント）
-        let removePatterns = [
-            #"<script[^>]*>[\s\S]*?</script>"#,
-            #"<style[^>]*>[\s\S]*?</style>"#,
-            #"<head[^>]*>[\s\S]*?</head>"#,
-            #"<nav[^>]*>[\s\S]*?</nav>"#,
-            #"<footer[^>]*>[\s\S]*?</footer>"#,
-            #"<aside[^>]*>[\s\S]*?</aside>"#,
-            #"<header[^>]*>[\s\S]*?</header>"#,
-            #"<!--[\s\S]*?-->"#
-        ]
-
-        for pattern in removePatterns {
-            if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) {
-                text = regex.stringByReplacingMatches(
-                    in: text,
-                    range: NSRange(text.startIndex..., in: text),
-                    withTemplate: ""
-                )
-            }
-        }
-
-        // ブロックタグを改行に変換
-        let blockTags = ["</p>", "</div>", "</li>", "</h1>", "</h2>", "</h3>", "</h4>", "</h5>", "</h6>", "</tr>", "<br>", "<br/>", "<br />"]
-        for tag in blockTags {
-            text = text.replacingOccurrences(of: tag, with: "\n", options: .caseInsensitive)
-        }
-
-        // 残りのHTMLタグを除去
-        if let regex = try? NSRegularExpression(pattern: "<[^>]+>", options: []) {
-            text = regex.stringByReplacingMatches(
-                in: text,
-                range: NSRange(text.startIndex..., in: text),
-                withTemplate: ""
-            )
-        }
-
-        // HTMLエンティティをデコード
-        text = text.decodingHTMLEntities()
-
-        // 各行をトリムして空行を除去
-        let lines = text
-            .components(separatedBy: "\n")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-
-        // 空行を最大1つにまとめる
-        var result: [String] = []
-        var previousWasEmpty = false
-
-        for line in lines {
-            if line.isEmpty {
-                if !previousWasEmpty && !result.isEmpty {
-                    result.append("")  // 空行は1つだけ許可
-                }
-                previousWasEmpty = true
-            } else {
-                result.append(line)
-                previousWasEmpty = false
-            }
-        }
-
-        return result.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-}
-
-private extension String {
-    /// HTMLエンティティをデコード
-    func decodingHTMLEntities() -> String {
-        var result = self
-        let entities: [(String, String)] = [
-            ("&nbsp;", " "),
-            ("&amp;", "&"),
-            ("&lt;", "<"),
-            ("&gt;", ">"),
-            ("&quot;", "\""),
-            ("&apos;", "'"),
-            ("&#39;", "'"),
-            ("&ndash;", "–"),
-            ("&mdash;", "—"),
-            ("&hellip;", "…"),
-            ("&copy;", "©"),
-            ("&reg;", "®"),
-            ("&trade;", "™")
-        ]
-
-        for (entity, replacement) in entities {
-            result = result.replacingOccurrences(of: entity, with: replacement)
-        }
-
-        // 数値エンティティ &#123; 形式
-        if let regex = try? NSRegularExpression(pattern: "&#(\\d+);", options: []) {
-            let matches = regex.matches(in: result, range: NSRange(result.startIndex..., in: result))
-            for match in matches.reversed() {
-                if let range = Range(match.range, in: result),
-                   let codeRange = Range(match.range(at: 1), in: result),
-                   let code = Int(result[codeRange]),
-                   let scalar = Unicode.Scalar(code) {
-                    result.replaceSubrange(range, with: String(Character(scalar)))
-                }
-            }
-        }
-
-        return result
-    }
+private struct FetchHeadersResult: Codable {
+    var url: String
+    var statusCode: Int
+    var headers: [String: String]
 }
 
 // MARK: - Errors
@@ -708,11 +548,11 @@ public enum WebToolKitError: Error, LocalizedError {
                 return "HTTP error \(statusCode). Try a different URL or use web_search to find alternatives."
             }
         case .contentTooLarge(let size, let maxSize):
-            return "Content too large: \(size) bytes (max: \(maxSize) bytes). Try fetching a more specific URL or use fetch_page with max_length parameter."
+            return "Content too large: \(size) bytes (max: \(maxSize) bytes). Try fetching a more specific URL or use fetch with max_length parameter."
         case .encodingError:
             return "Cannot decode the response encoding. Try a different source."
         case .jsonParseError(let message):
-            return "JSON parse error: \(message). Verify the URL returns JSON, or use fetch_url for non-JSON content."
+            return "JSON parse error: \(message). Verify the URL returns JSON, or use fetch for non-JSON content."
         }
     }
 }

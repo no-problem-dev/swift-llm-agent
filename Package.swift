@@ -11,8 +11,9 @@ let package = Package(
         .library(name: "LLMToolkits", targets: ["LLMToolkits"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/no-problem-dev/swift-llm-client.git", from: "1.1.0"),
+        .package(path: "../swift-llm-client"),
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.10.0"),
+        .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.6.0"),
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.4.0"),
     ],
     targets: [
@@ -24,6 +25,7 @@ let package = Package(
             .product(name: "LLMClient", package: "swift-llm-client"),
             .product(name: "LLMTool", package: "swift-llm-client"),
             .product(name: "MCP", package: "swift-sdk"),
+            .product(name: "SwiftSoup", package: "SwiftSoup"),
         ]),
         .target(name: "LLMAgentSession", dependencies: [
             "LLMAgent",
