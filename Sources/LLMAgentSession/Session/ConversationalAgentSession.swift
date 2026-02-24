@@ -366,26 +366,68 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                 do {
                     switch loopPhase {
                     case .toolUse:
-                        // ツール使用フェーズ: ツール有効、構造化出力なし
-                        response = try await client.executeAgentStep(
+                        // ツール使用フェーズ: ツール有効、構造化出力なし（ストリーミング）
+                        var fullResponse: LLMResponse?
+                        for try await event in client.streamAgentStep(
                             messages: messages,
                             model: model,
                             systemPrompt: systemPrompt,
                             tools: tools,
                             toolChoice: tools.isEmpty ? nil : .auto,
-                            responseSchema: nil
-                        )
+                            responseSchema: nil,
+                            thinkingMode: configuration.thinkingMode
+                        ) {
+                            switch event {
+                            case .delta(let delta):
+                                switch delta {
+                                case .thinkingDelta(let text):
+                                    updateStatusAndYield(
+                                        .running(step: .thinkingDelta(text)),
+                                        continuation: continuation
+                                    )
+                                case .textDelta:
+                                    break
+                                }
+                            case .completed(let resp):
+                                fullResponse = resp
+                            }
+                        }
+                        guard let completed = fullResponse else {
+                            throw ConversationalAgentError.invalidState("No response received from streaming")
+                        }
+                        response = completed
 
                     case .finalOutput:
-                        // 最終出力フェーズ: ツール無効、構造化出力要求
-                        response = try await client.executeAgentStep(
+                        // 最終出力フェーズ: ツール無効、構造化出力要求（ストリーミング）
+                        var fullResponse: LLMResponse?
+                        for try await event in client.streamAgentStep(
                             messages: messages,
                             model: model,
                             systemPrompt: systemPrompt,
                             tools: ToolSet {},
                             toolChoice: nil,
-                            responseSchema: Output.jsonSchema
-                        )
+                            responseSchema: Output.jsonSchema,
+                            thinkingMode: configuration.thinkingMode
+                        ) {
+                            switch event {
+                            case .delta(let delta):
+                                switch delta {
+                                case .thinkingDelta(let text):
+                                    updateStatusAndYield(
+                                        .running(step: .thinkingDelta(text)),
+                                        continuation: continuation
+                                    )
+                                case .textDelta:
+                                    break
+                                }
+                            case .completed(let resp):
+                                fullResponse = resp
+                            }
+                        }
+                        guard let completed = fullResponse else {
+                            throw ConversationalAgentError.invalidState("No response received from streaming")
+                        }
+                        response = completed
                     }
                 } catch let error as LLMError {
                     throw ConversationalAgentError.llmError(error)
@@ -587,6 +629,8 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                 }
             case .toolUse(let id, let name, let input):
                 contents.append(.toolUse(id: id, name: name, input: input))
+            case .thinking(let text, let signature):
+                contents.append(.thinking(text: text, signature: signature))
             case .image, .audio:
                 // 生成されたメディアは会話履歴には含めない
                 break

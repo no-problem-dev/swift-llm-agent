@@ -2,6 +2,9 @@ import Foundation
 import LLMClient
 import LLMTool
 
+// Re-export for downstream consumers
+public typealias ThinkingMode = LLMClient.ThinkingMode
+
 // MARK: - AgentStep
 
 /// エージェントループの各ステップを表す
@@ -78,6 +81,12 @@ public struct AgentConfiguration: Sendable {
     /// - 正の値: 指定回数まで許可
     public let maxAskUserCalls: Int?
 
+    /// Extended Thinking のモード
+    ///
+    /// `.adaptive` に設定すると、Claude の Extended Thinking を有効にし、
+    /// 思考プロセスをストリーミングで返します。
+    public let thinkingMode: ThinkingMode
+
     /// デフォルト設定
     public static let `default` = AgentConfiguration(
         maxSteps: 10,
@@ -92,7 +101,8 @@ public struct AgentConfiguration: Sendable {
         autoExecuteTools: Bool = true,
         maxDuplicateToolCalls: Int = 1,
         maxToolCallsPerTool: Int? = 5,
-        maxAskUserCalls: Int? = nil
+        maxAskUserCalls: Int? = nil,
+        thinkingMode: ThinkingMode = .disabled
     ) {
         self.maxSteps = maxSteps
         self.softMaxSteps = softMaxSteps ?? max(1, maxSteps - 2)
@@ -100,6 +110,7 @@ public struct AgentConfiguration: Sendable {
         self.maxDuplicateToolCalls = maxDuplicateToolCalls
         self.maxToolCallsPerTool = maxToolCallsPerTool
         self.maxAskUserCalls = maxAskUserCalls
+        self.thinkingMode = thinkingMode
     }
 }
 

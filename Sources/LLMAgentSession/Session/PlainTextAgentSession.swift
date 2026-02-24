@@ -465,6 +465,8 @@ public actor PlainTextAgentSession<Client: AgentCapableClient>
                 }
             case .toolUse(let id, let name, let input):
                 contents.append(.toolUse(id: id, name: name, input: input))
+            case .thinking(let text, let signature):
+                contents.append(.thinking(text: text, signature: signature))
             case .image, .audio:
                 break
             }

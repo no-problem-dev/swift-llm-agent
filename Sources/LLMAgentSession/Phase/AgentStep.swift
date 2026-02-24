@@ -50,6 +50,11 @@ public enum AgentStep: Sendable, Equatable {
     /// LLM からの応答を処理中であることを示します。
     case thinking
 
+    /// 思考テキストの差分（リアルタイム）
+    ///
+    /// Extended Thinking が有効な場合、思考テキストのチャンクが順次配信されます。
+    case thinkingDelta(String)
+
     /// ツール呼び出しが要求された
     ///
     /// LLM がツールの実行を要求したことを示します。
@@ -81,6 +86,8 @@ extension AgentStep: CustomStringConvertible {
             return "userMessage(\(msg.prefix(30))...)"
         case .thinking:
             return "thinking"
+        case .thinkingDelta(let text):
+            return "thinkingDelta(\(text.prefix(30))...)"
         case .toolCall(let call):
             return "toolCall(\(call.name))"
         case .toolResult(let result):
