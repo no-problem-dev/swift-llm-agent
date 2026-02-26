@@ -44,6 +44,7 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
     private let catalog: any SubAgentCatalog
     private let timeout: Duration?
     private let eventHandler: SubAgentEventHandler?
+    private let backgroundTaskRegistry: BackgroundTaskRegistry?
 
     // MARK: - Initialization
 
@@ -55,18 +56,21 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
     ///   - catalog: サブエージェントタイプのカタログ
     ///   - timeout: タイムアウト（オプション）
     ///   - eventHandler: イベントハンドラー（オプション）
+    ///   - backgroundTaskRegistry: バックグラウンドタスクレジストリ（nil の場合バックグラウンド実行無効）
     public init(
         client: Client,
         model: Client.Model,
         catalog: any SubAgentCatalog,
         timeout: Duration? = nil,
-        eventHandler: SubAgentEventHandler? = nil
+        eventHandler: SubAgentEventHandler? = nil,
+        backgroundTaskRegistry: BackgroundTaskRegistry? = nil
     ) {
         self.client = client
         self.model = model
         self.catalog = catalog
         self.timeout = timeout
         self.eventHandler = eventHandler
+        self.backgroundTaskRegistry = backgroundTaskRegistry
     }
 
     // MARK: - Tool Protocol
@@ -77,7 +81,13 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
         var desc = "Delegate a task to a specialized sub-agent. "
             + "Choose an agent_type from the available types and provide a detailed prompt "
             + "describing what the sub-agent should do.\n\n"
-            + "Available agent types:\n"
+
+        if backgroundTaskRegistry != nil {
+            desc += "Set run_in_background to true to run the task in the background. "
+                + "Use the task_output tool to retrieve results later.\n\n"
+        }
+
+        desc += "Available agent types:\n"
 
         for agentType in catalog.agentTypes {
             desc += "- \"\(agentType.name)\": \(agentType.description)\n"
@@ -87,21 +97,31 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
     }
 
     public var inputSchema: JSONSchema {
-        .object(
-            properties: [
-                "prompt": .string(
-                    description: "Detailed instructions for the sub-agent. "
-                        + "Be specific about what you want the sub-agent to accomplish."
-                ),
-                "description": .string(
-                    description: "A short (3-5 word) description of the task for logging purposes."
-                ),
-                "agent_type": .enum(
-                    catalog.agentTypeNames,
-                    description: "The type of sub-agent to use. "
-                        + "Each type has different tools and capabilities."
-                ),
-            ],
+        var properties: [String: JSONSchema] = [
+            "prompt": .string(
+                description: "Detailed instructions for the sub-agent. "
+                    + "Be specific about what you want the sub-agent to accomplish."
+            ),
+            "description": .string(
+                description: "A short (3-5 word) description of the task for logging purposes."
+            ),
+            "agent_type": .enum(
+                catalog.agentTypeNames,
+                description: "The type of sub-agent to use. "
+                    + "Each type has different tools and capabilities."
+            ),
+        ]
+
+        if backgroundTaskRegistry != nil {
+            properties["run_in_background"] = .boolean(
+                description: "Set to true to run the task in the background. "
+                    + "The tool will return immediately with a task_id. "
+                    + "Use the task_output tool to retrieve the result later."
+            )
+        }
+
+        return .object(
+            properties: properties,
             required: ["prompt", "description", "agent_type"]
         )
     }
@@ -128,10 +148,51 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
         // タスク識別子を生成（並列実行時のイベント識別用）
         let taskId = UUID()
 
-        // イベント通知
+        // バックグラウンド実行
+        if args.runInBackground == true, let registry = backgroundTaskRegistry {
+            await eventHandler?(
+                .backgroundTaskRegistered(
+                    taskId: taskId,
+                    agentType: args.agentType,
+                    description: args.description
+                )
+            )
+
+            let taskHandle = Task<Void, Never> {
+                do {
+                    let result = try await SubAgentRunner.run(
+                        client: self.client,
+                        model: self.model,
+                        prompt: args.prompt,
+                        tools: agentType.tools,
+                        systemPrompt: agentType.systemPrompt,
+                        configuration: agentType.configuration,
+                        timeout: self.timeout,
+                        taskId: taskId,
+                        eventHandler: self.eventHandler
+                    )
+                    await registry.markCompleted(taskId: taskId, result: result)
+                    await self.eventHandler?(.completed(taskId: taskId, result: result))
+                } catch {
+                    let message = error.localizedDescription
+                    await registry.markFailed(taskId: taskId, error: message)
+                    await self.eventHandler?(.failed(taskId: taskId, error: error))
+                }
+            }
+
+            await registry.register(
+                taskId: taskId,
+                agentType: args.agentType,
+                description: args.description,
+                taskHandle: taskHandle
+            )
+
+            return .text("Background task started. task_id: \(taskId.uuidString)")
+        }
+
+        // フォアグラウンド実行（既存パス）
         await eventHandler?(.started(taskId: taskId, agentType: args.agentType, description: args.description))
 
-        // サブエージェント実行
         do {
             let result = try await SubAgentRunner.run(
                 client: client,
@@ -159,5 +220,6 @@ extension DelegateTaskTool {
         let prompt: String
         let description: String
         let agentType: String
+        let runInBackground: Bool?
     }
 }

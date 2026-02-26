@@ -143,6 +143,97 @@ import LLMAgent
     #expect(result.stringValue == "Mock response")
 }
 
+// MARK: - Background Mode Schema Tests
+
+@Test func testSchemaIncludesRunInBackgroundWithRegistry() throws {
+    let catalog = SubAgentCatalogDefinition {
+        SubAgentTypeDefinition(name: "researcher", description: "Research agent")
+    }
+
+    let registry = BackgroundTaskRegistry()
+    let tool = DelegateTaskTool(
+        client: MockAgentClient(),
+        model: "test-model",
+        catalog: catalog,
+        backgroundTaskRegistry: registry
+    )
+
+    let schema = tool.inputSchema
+    let data = try schema.toJSONData()
+    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+    let properties = json?["properties"] as? [String: Any]
+
+    #expect(properties?["run_in_background"] != nil)
+}
+
+@Test func testSchemaExcludesRunInBackgroundWithoutRegistry() throws {
+    let catalog = SubAgentCatalogDefinition {
+        SubAgentTypeDefinition(name: "researcher", description: "Research agent")
+    }
+
+    let tool = DelegateTaskTool(
+        client: MockAgentClient(),
+        model: "test-model",
+        catalog: catalog
+    )
+
+    let schema = tool.inputSchema
+    let data = try schema.toJSONData()
+    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+    let properties = json?["properties"] as? [String: Any]
+
+    #expect(properties?["run_in_background"] == nil)
+}
+
+@Test func testDescriptionIncludesBackgroundInfoWithRegistry() {
+    let catalog = SubAgentCatalogDefinition {
+        SubAgentTypeDefinition(name: "researcher", description: "Research agent")
+    }
+
+    let registry = BackgroundTaskRegistry()
+    let tool = DelegateTaskTool(
+        client: MockAgentClient(),
+        model: "test-model",
+        catalog: catalog,
+        backgroundTaskRegistry: registry
+    )
+
+    #expect(tool.toolDescription.contains("run_in_background"))
+    #expect(tool.toolDescription.contains("task_output"))
+}
+
+@Test func testBackgroundExecutionReturnsTaskId() async throws {
+    let catalog = SubAgentCatalogDefinition {
+        SubAgentTypeDefinition(name: "researcher", description: "Research agent")
+    }
+
+    let registry = BackgroundTaskRegistry()
+    let tool = DelegateTaskTool(
+        client: MockAgentClient(),
+        model: "test-model",
+        catalog: catalog,
+        backgroundTaskRegistry: registry
+    )
+
+    let args: [String: Any] = [
+        "prompt": "Research AI trends",
+        "description": "AI research",
+        "agent_type": "researcher",
+        "run_in_background": true,
+    ]
+    let data = try JSONSerialization.data(withJSONObject: args)
+    let result = try await tool.execute(with: data)
+
+    #expect(!result.isError)
+    #expect(result.stringValue.contains("Background task started"))
+    #expect(result.stringValue.contains("task_id:"))
+
+    // Registry にタスクが登録されている
+    let tasks = await registry.listTasks()
+    #expect(tasks.count == 1)
+    #expect(tasks[0].agentType == "researcher")
+}
+
 // MARK: - SubAgentError Tests
 
 @Test func testSubAgentErrorDescriptions() {

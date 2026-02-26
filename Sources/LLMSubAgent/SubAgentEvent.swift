@@ -22,6 +22,9 @@ public enum SubAgentEvent: Sendable {
 
     /// サブエージェントがエラーで終了
     case failed(taskId: UUID, error: any Error)
+
+    /// バックグラウンドタスクとして登録された
+    case backgroundTaskRegistered(taskId: UUID, agentType: String, description: String)
 }
 
 // MARK: - SubAgentEventHandler
