@@ -203,7 +203,9 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
     }
 
     private func sendRequest() async throws -> LLMResponse {
-        let messages = await context.getMessages()
+        // クラッシュ等で tool_result が欠落した場合に備えてメッセージ履歴を修復
+        var messages = await context.getMessages()
+        messages.sanitizeOrphanedToolUses()
         let systemPrompt = await context.getSystemPrompt()
 
         switch phase {

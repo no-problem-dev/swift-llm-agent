@@ -365,6 +365,9 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                 // LoopPhaseに応じて LLM 呼び出し
                 continuation.yield(.running(step: .thinking))
 
+                // クラッシュ等で tool_result が欠落した場合に備えてメッセージ履歴を修復
+                messages.sanitizeOrphanedToolUses()
+
                 let response: LLMResponse
                 do {
                     switch loopPhase {

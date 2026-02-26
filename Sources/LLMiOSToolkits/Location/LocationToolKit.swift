@@ -33,6 +33,7 @@ public final class LocationToolKit: ToolKit, @unchecked Sendable {
     public let name: String = "location"
 
     private let locationManager: CLLocationManager
+    private let delegate: LocationManagerDelegate
     private let guard_: PermissionGuard
     private let geocoder: CLGeocoder
 
@@ -41,8 +42,13 @@ public final class LocationToolKit: ToolKit, @unchecked Sendable {
     /// LocationToolKit を作成
     public init() {
         self.locationManager = CLLocationManager()
+        self.delegate = LocationManagerDelegate()
+        self.locationManager.delegate = delegate
         self.guard_ = PermissionGuard(
-            provider: LocationPermission(locationManager: locationManager)
+            provider: LocationPermission(
+                locationManager: locationManager,
+                delegate: delegate
+            )
         )
         self.geocoder = CLGeocoder()
     }
@@ -74,13 +80,43 @@ public final class LocationToolKit: ToolKit, @unchecked Sendable {
                 readOnlyHint: true,
                 openWorldHint: false
             )
-        ) { [guard_, locationManager, geocoder] data in
+        ) { [guard_, locationManager, delegate, geocoder] data in
             if let error = await guard_.ensureAuthorized() { return error }
 
-            guard let location = locationManager.location else {
+            // AsyncStream で能動的に位置を取得（キャッシュ依存を排除）
+            let stream = delegate.locationStream()
+
+            await MainActor.run {
+                locationManager.requestLocation()
+            }
+
+            let location: CLLocation
+            do {
+                location = try await withThrowingTaskGroup(of: CLLocation.self) { group in
+                    group.addTask {
+                        for await result in stream {
+                            switch result {
+                            case .success(let loc):
+                                return loc
+                            case .failure(let error):
+                                throw error
+                            }
+                        }
+                        throw LocationError.locationUnavailable
+                    }
+
+                    group.addTask {
+                        try await Task.sleep(for: .seconds(15))
+                        throw LocationError.locationTimeout
+                    }
+
+                    let result = try await group.next()!
+                    group.cancelAll()
+                    return result
+                }
+            } catch {
                 return .error(
-                    "Current location is not available. "
-                    + "Make sure location services are enabled and try again."
+                    "Failed to get current location: \(error.localizedDescription)"
                 )
             }
 

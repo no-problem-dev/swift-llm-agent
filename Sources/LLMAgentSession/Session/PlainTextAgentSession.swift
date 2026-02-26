@@ -292,6 +292,9 @@ public actor PlainTextAgentSession<Client: AgentCapableClient>
                 // LLM 呼び出し（toolUse フェーズのみ）
                 continuation.yield(.running(step: .thinking))
 
+                // クラッシュ等で tool_result が欠落した場合に備えてメッセージ履歴を修復
+                messages.sanitizeOrphanedToolUses()
+
                 let response: LLMResponse
                 do {
                     response = try await client.executeAgentStep(

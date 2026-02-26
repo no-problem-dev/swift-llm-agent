@@ -120,6 +120,27 @@ struct GeocodeResultInfo: Codable, Sendable {
     }
 }
 
+// MARK: - Errors
+
+enum LocationError: Error, LocalizedError {
+    case authorizationTimeout
+    case locationTimeout
+    case locationUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .authorizationTimeout:
+            "Location authorization request timed out. "
+                + "Please respond to the location permission dialog."
+        case .locationTimeout:
+            "Location request timed out. "
+                + "Ensure location services are enabled and you have a clear view of the sky."
+        case .locationUnavailable:
+            "Current location is not available."
+        }
+    }
+}
+
 // MARK: - Helpers
 
 enum LocationHelper {
