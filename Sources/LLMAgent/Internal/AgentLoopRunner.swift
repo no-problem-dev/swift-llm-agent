@@ -107,16 +107,54 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
         let config = await context.getConfiguration()
 
         if config.autoExecuteTools {
-            var results: [ToolResponse] = []
-
+            // 全ツールコールを記録・イベント化
             for call in calls {
-                try Task.checkCancellation()
                 await stateManager.recordToolCall(call)
                 pendingEvents.append(.toolCall(call))
+            }
 
-                let result = await executeToolSafely(call)
-                results.append(result)
-                pendingEvents.append(.toolResult(result))
+            let results: [ToolResponse]
+            if calls.count <= 1 {
+                // 1件以下は逐次（TaskGroup オーバーヘッド回避）
+                var sequential: [ToolResponse] = []
+                for call in calls {
+                    try Task.checkCancellation()
+                    let result = await executeToolSafely(call)
+                    sequential.append(result)
+                    pendingEvents.append(.toolResult(result))
+                }
+                results = sequential
+            } else {
+                // 2件以上は並列実行
+                let toolSet = await context.getTools()
+                results = await withTaskGroup(of: (Int, ToolResponse).self) { group in
+                    for (index, call) in calls.enumerated() {
+                        group.addTask {
+                            do {
+                                let result = try await toolSet.execute(
+                                    toolNamed: call.name, with: call.arguments
+                                )
+                                return (index, ToolResponse(
+                                    callId: call.id, name: call.name,
+                                    output: result.stringValue, isError: result.isError
+                                ))
+                            } catch {
+                                return (index, ToolResponse(
+                                    callId: call.id, name: call.name,
+                                    output: "Error: \(error.localizedDescription)", isError: true
+                                ))
+                            }
+                        }
+                    }
+                    var indexed: [(Int, ToolResponse)] = []
+                    for await pair in group {
+                        indexed.append(pair)
+                    }
+                    return indexed.sorted(by: { $0.0 < $1.0 }).map(\.1)
+                }
+                for result in results {
+                    pendingEvents.append(.toolResult(result))
+                }
             }
 
             await context.addToolResults(results)

@@ -327,23 +327,61 @@ public actor PlainTextAgentSession<Client: AgentCapableClient>
 
                 // ツール実行
                 if configuration.autoExecuteTools {
-                    var toolResults: [ToolResponse] = []
                     var askUserCall: ToolCall?
                     var askUserQuestion: String?
+                    var regularCalls: [ToolCall] = []
 
+                    // Phase 1: イベント発火 + ask_user 分離
                     for call in toolCalls {
                         continuation.yield(.running(step: .toolCall(call)))
-
                         if call.name == "ask_user" {
                             let question = extractQuestion(from: call)
                             askUserCall = call
                             askUserQuestion = question
                             continuation.yield(.running(step: .askingUser(question)))
                         } else {
+                            regularCalls.append(call)
+                        }
+                    }
+
+                    // Phase 2: 通常ツールを並列実行
+                    let toolResults: [ToolResponse]
+                    if regularCalls.count <= 1 {
+                        var results: [ToolResponse] = []
+                        for call in regularCalls {
                             let result = await executeToolSafely(call)
                             try Task.checkCancellation()
-                            toolResults.append(result)
+                            results.append(result)
                             continuation.yield(.running(step: .toolResult(result)))
+                        }
+                        toolResults = results
+                    } else {
+                        let toolSet = self.tools
+                        toolResults = await withTaskGroup(of: (Int, ToolResponse).self) { group in
+                            for (index, call) in regularCalls.enumerated() {
+                                group.addTask {
+                                    do {
+                                        let result = try await toolSet.execute(
+                                            toolNamed: call.name, with: call.arguments
+                                        )
+                                        return (index, ToolResponse(
+                                            callId: call.id, name: call.name,
+                                            output: result.stringValue, isError: result.isError
+                                        ))
+                                    } catch {
+                                        return (index, ToolResponse(
+                                            callId: call.id, name: call.name,
+                                            output: "Error: \(error.localizedDescription)", isError: true
+                                        ))
+                                    }
+                                }
+                            }
+                            var indexed: [(Int, ToolResponse)] = []
+                            for await pair in group {
+                                continuation.yield(.running(step: .toolResult(pair.1)))
+                                indexed.append(pair)
+                            }
+                            return indexed.sorted(by: { $0.0 < $1.0 }).map(\.1)
                         }
                     }
 
