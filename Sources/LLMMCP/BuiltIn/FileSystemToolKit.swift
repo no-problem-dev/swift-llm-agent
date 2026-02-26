@@ -7,11 +7,18 @@ import LLMTool
 /// ファイルシステム操作ツールを提供するToolKit
 ///
 /// 公式MCP Filesystem Serverに準拠した実装です。
-/// セキュリティのため、許可されたパスのみにアクセスを制限します。
+/// `allowedPaths` を指定すると、許可されたパス以下のみにアクセスを制限します。
+/// 省略した場合は iOS サンドボックスの制約のみが適用されます。
 ///
 /// ## 使用例
 ///
 /// ```swift
+/// // iOS: サンドボックス内は全てアクセス可能
+/// let tools = ToolSet {
+///     FileSystemToolKit()
+/// }
+///
+/// // macOS: 特定ディレクトリのみ許可
 /// let tools = ToolSet {
 ///     FileSystemToolKit(allowedPaths: ["/Users/user/projects"])
 /// }
@@ -22,19 +29,21 @@ import LLMTool
 /// - `read_file`: ファイルの内容を読み取り
 /// - `read_multiple_files`: 複数ファイルを一度に読み取り
 /// - `write_file`: ファイルを作成または上書き
+/// - `edit_file`: 文字列置換によるファイル編集
 /// - `create_directory`: ディレクトリを作成
 /// - `list_directory`: ディレクトリの内容一覧
 /// - `directory_tree`: ディレクトリツリー表示
 /// - `move_file`: ファイル/ディレクトリの移動・名前変更
 /// - `search_files`: ファイル検索（パターンマッチング）
+/// - `grep_files`: ファイル内容の正規表現検索
 /// - `get_file_info`: ファイル情報取得
 public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
     // MARK: - Properties
 
     public let name: String = "filesystem"
 
-    /// 許可されたパス（これらのパス以下のみアクセス可能）
-    private let allowedPaths: [String]
+    /// 許可されたパス（nil の場合は全パス許可）
+    private let allowedPaths: [String]?
 
     /// FileManager
     private let fileManager: FileManager
@@ -43,10 +52,11 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
 
     /// FileSystemToolKitを作成
     ///
-    /// - Parameter allowedPaths: アクセスを許可するパスの配列
-    ///   チルダ（~）はホームディレクトリに展開されます
-    public init(allowedPaths: [String]) {
-        self.allowedPaths = allowedPaths.map { path in
+    /// - Parameter allowedPaths: アクセスを許可するパスの配列（nil で全パス許可）
+    ///   チルダ（~）はホームディレクトリに展開されます。
+    ///   iOS ではサンドボックスが OS レベルで制限するため、nil（全許可）で問題ありません。
+    public init(allowedPaths: [String]? = nil) {
+        self.allowedPaths = allowedPaths?.map { path in
             NSString(string: path).expandingTildeInPath
         }
         self.fileManager = FileManager.default
@@ -59,11 +69,13 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
             readFileTool,
             readMultipleFilesTool,
             writeFileTool,
+            editFileTool,
             createDirectoryTool,
             listDirectoryTool,
             directoryTreeTool,
             moveFileTool,
             searchFilesTool,
+            grepFilesTool,
             getFileInfoTool
         ]
     }
@@ -74,6 +86,9 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
     private func validatePath(_ path: String) throws -> String {
         let expandedPath = NSString(string: path).expandingTildeInPath
         let resolvedPath = URL(fileURLWithPath: expandedPath).standardizedFileURL.path
+
+        // allowedPaths が nil なら全パス許可
+        guard let allowedPaths else { return resolvedPath }
 
         // 許可されたパス内にあるかチェック
         let isAllowed = allowedPaths.contains { allowedPath in
@@ -197,6 +212,88 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
             try data.write(to: URL(fileURLWithPath: validPath))
 
             return .text("Successfully wrote to \(validPath)")
+        }
+    }
+
+    /// edit_file ツール
+    private var editFileTool: BuiltInTool {
+        BuiltInTool(
+            name: "edit_file",
+            description: "Make precise text replacements in a file. Finds the exact `old_string` in the file and replaces it with `new_string`. The edit will fail if `old_string` is not unique in the file (provide more surrounding context to make it unique), unless `replace_all` is true.",
+            inputSchema: .object(
+                properties: [
+                    "path": .string(description: "Path to the file to edit"),
+                    "old_string": .string(description: "The exact text to find and replace"),
+                    "new_string": .string(description: "The text to replace it with"),
+                    "replace_all": .boolean(description: "Replace all occurrences (default: false). Use for renaming variables or updating repeated patterns.")
+                ],
+                required: ["path", "old_string", "new_string"]
+            ),
+            annotations: ToolAnnotations(
+                title: "Edit File",
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: false,
+                openWorldHint: false
+            )
+        ) { [self] data in
+            let input = try JSONDecoder().decode(EditFileInput.self, from: data)
+            let validPath = try validatePath(input.path)
+
+            guard let fileData = fileManager.contents(atPath: validPath) else {
+                throw FileSystemToolKitError.fileNotFound(path: validPath)
+            }
+
+            guard var content = String(data: fileData, encoding: .utf8) else {
+                throw FileSystemToolKitError.encodingError(path: validPath)
+            }
+
+            let replaceAll = input.replaceAll ?? false
+
+            // old_string の出現回数をチェック
+            let occurrences = content.components(separatedBy: input.oldString).count - 1
+
+            guard occurrences > 0 else {
+                throw FileSystemToolKitError.operationFailed(
+                    message: "old_string not found in \(validPath). Make sure the text matches exactly, including whitespace and indentation."
+                )
+            }
+
+            if !replaceAll && occurrences > 1 {
+                throw FileSystemToolKitError.operationFailed(
+                    message: "old_string found \(occurrences) times in \(validPath). Provide more surrounding context to make it unique, or set replace_all to true."
+                )
+            }
+
+            guard input.oldString != input.newString else {
+                throw FileSystemToolKitError.operationFailed(
+                    message: "old_string and new_string are identical. No changes needed."
+                )
+            }
+
+            // 置換を実行
+            let oldLineCount = content.components(separatedBy: "\n").count
+            if replaceAll {
+                content = content.replacingOccurrences(of: input.oldString, with: input.newString)
+            } else {
+                // 最初の出現のみ置換
+                if let range = content.range(of: input.oldString) {
+                    content = content.replacingCharacters(in: range, with: input.newString)
+                }
+            }
+            let newLineCount = content.components(separatedBy: "\n").count
+
+            // 書き戻し
+            guard let writeData = content.data(using: .utf8) else {
+                throw FileSystemToolKitError.encodingError(path: validPath)
+            }
+            try writeData.write(to: URL(fileURLWithPath: validPath))
+
+            let lineDiff = newLineCount - oldLineCount
+            let lineDiffStr = lineDiff > 0 ? "+\(lineDiff)" : "\(lineDiff)"
+            let replacedCount = replaceAll ? occurrences : 1
+
+            return .text("Edited \(validPath): \(replacedCount) replacement(s), \(lineDiffStr) lines")
         }
     }
 
@@ -376,6 +473,142 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
         }
     }
 
+    /// grep_files ツール
+    private var grepFilesTool: BuiltInTool {
+        BuiltInTool(
+            name: "grep_files",
+            description: "Search file contents using a regular expression pattern. Returns matching lines with file paths and line numbers. Skips binary files automatically.",
+            inputSchema: .object(
+                properties: [
+                    "pattern": .string(description: "Regular expression pattern to search for"),
+                    "path": .string(description: "Directory to search in (default: first allowed path)"),
+                    "glob": .string(description: "File name filter pattern (e.g., '*.swift', '*.ts')"),
+                    "context_lines": .integer(description: "Number of context lines before and after each match (default: 0)"),
+                    "max_results": .integer(description: "Maximum number of matches to return (default: 100)")
+                ],
+                required: ["pattern"]
+            ),
+            annotations: ToolAnnotations(
+                title: "Grep Files",
+                readOnlyHint: true,
+                openWorldHint: false
+            )
+        ) { [self] data in
+            let input = try JSONDecoder().decode(GrepFilesInput.self, from: data)
+            let searchPath: String
+            if let inputPath = input.path {
+                searchPath = try validatePath(inputPath)
+            } else if let firstAllowed = allowedPaths?.first {
+                searchPath = firstAllowed
+            } else {
+                searchPath = fileManager.currentDirectoryPath
+            }
+
+            let maxResults = min(input.maxResults ?? 100, 500)
+            let contextLines = min(input.contextLines ?? 0, 10)
+
+            guard let regex = try? NSRegularExpression(pattern: input.pattern, options: []) else {
+                throw FileSystemToolKitError.operationFailed(
+                    message: "Invalid regular expression: \(input.pattern)"
+                )
+            }
+
+            let globRegex: NSRegularExpression?
+            if let glob = input.glob {
+                let globPattern = globToRegex(glob)
+                globRegex = try? NSRegularExpression(pattern: globPattern, options: [])
+            } else {
+                globRegex = nil
+            }
+
+            var matches: [GrepMatch] = []
+
+            guard let enumerator = fileManager.enumerator(atPath: searchPath) else {
+                throw FileSystemToolKitError.operationFailed(
+                    message: "Cannot enumerate directory: \(searchPath)"
+                )
+            }
+
+            while let relativePath = enumerator.nextObject() as? String {
+                guard matches.count < maxResults else { break }
+
+                let fileName = (relativePath as NSString).lastPathComponent
+
+                // 隠しファイル・ディレクトリをスキップ
+                if fileName.hasPrefix(".") {
+                    enumerator.skipDescendants()
+                    continue
+                }
+
+                // glob フィルタ
+                if let globRegex {
+                    let range = NSRange(fileName.startIndex..., in: fileName)
+                    if globRegex.firstMatch(in: fileName, range: range) == nil {
+                        continue
+                    }
+                }
+
+                let fullPath = (searchPath as NSString).appendingPathComponent(relativePath)
+
+                // ディレクトリはスキップ
+                var isDirectory: ObjCBool = false
+                guard fileManager.fileExists(atPath: fullPath, isDirectory: &isDirectory),
+                      !isDirectory.boolValue else {
+                    continue
+                }
+
+                // ファイルを読み込み（バイナリはスキップ）
+                guard let fileData = fileManager.contents(atPath: fullPath),
+                      let content = String(data: fileData, encoding: .utf8) else {
+                    continue
+                }
+
+                let lines = content.components(separatedBy: "\n")
+
+                for (lineIndex, line) in lines.enumerated() {
+                    guard matches.count < maxResults else { break }
+
+                    let range = NSRange(line.startIndex..., in: line)
+                    if regex.firstMatch(in: line, range: range) != nil {
+                        // コンテキスト行を収集
+                        var contextBefore: [String]?
+                        var contextAfter: [String]?
+
+                        if contextLines > 0 {
+                            let beforeStart = max(0, lineIndex - contextLines)
+                            if beforeStart < lineIndex {
+                                contextBefore = Array(lines[beforeStart..<lineIndex])
+                            }
+
+                            let afterEnd = min(lines.count, lineIndex + contextLines + 1)
+                            if lineIndex + 1 < afterEnd {
+                                contextAfter = Array(lines[(lineIndex + 1)..<afterEnd])
+                            }
+                        }
+
+                        matches.append(GrepMatch(
+                            path: relativePath,
+                            lineNumber: lineIndex + 1,
+                            line: line,
+                            contextBefore: contextBefore,
+                            contextAfter: contextAfter
+                        ))
+                    }
+                }
+            }
+
+            let result = GrepResult(
+                searchPath: searchPath,
+                pattern: input.pattern,
+                matchCount: matches.count,
+                truncated: matches.count >= maxResults,
+                matches: matches
+            )
+            let output = try JSONEncoder().encode(result)
+            return .json(output)
+        }
+    }
+
     /// get_file_info ツール
     private var getFileInfoTool: BuiltInTool {
         BuiltInTool(
@@ -506,6 +739,34 @@ private struct SearchFilesInput: Codable {
     var recursive: Bool?
 }
 
+private struct EditFileInput: Codable {
+    var path: String
+    var oldString: String
+    var newString: String
+    var replaceAll: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case path
+        case oldString = "old_string"
+        case newString = "new_string"
+        case replaceAll = "replace_all"
+    }
+}
+
+private struct GrepFilesInput: Codable {
+    var pattern: String
+    var path: String?
+    var glob: String?
+    var contextLines: Int?
+    var maxResults: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case pattern, path, glob
+        case contextLines = "context_lines"
+        case maxResults = "max_results"
+    }
+}
+
 private struct GetFileInfoInput: Codable {
     var path: String
 }
@@ -533,6 +794,37 @@ private struct SearchResult: Codable {
     var path: String
     var pattern: String
     var matches: [String]
+}
+
+private struct GrepMatch: Codable {
+    var path: String
+    var lineNumber: Int
+    var line: String
+    var contextBefore: [String]?
+    var contextAfter: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case path
+        case lineNumber = "line_number"
+        case line
+        case contextBefore = "context_before"
+        case contextAfter = "context_after"
+    }
+}
+
+private struct GrepResult: Codable {
+    var searchPath: String
+    var pattern: String
+    var matchCount: Int
+    var truncated: Bool
+    var matches: [GrepMatch]
+
+    enum CodingKeys: String, CodingKey {
+        case searchPath = "search_path"
+        case pattern
+        case matchCount = "match_count"
+        case truncated, matches
+    }
 }
 
 private struct FileInfo: Codable {

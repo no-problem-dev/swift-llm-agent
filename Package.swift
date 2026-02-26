@@ -11,6 +11,7 @@ let package = Package(
         .library(name: "LLMToolkits", targets: ["LLMToolkits"]),
         .library(name: "LLMiOSToolkits", targets: ["LLMiOSToolkits"]),
         .library(name: "LLMSubAgent", targets: ["LLMSubAgent"]),
+        .library(name: "LLMSkill", targets: ["LLMSkill"]),
     ],
     dependencies: [
         .package(path: "../swift-llm-client"),
@@ -51,11 +52,18 @@ let package = Package(
             .product(name: "LLMClient", package: "swift-llm-client"),
             .product(name: "LLMTool", package: "swift-llm-client"),
         ]),
+        .target(name: "LLMSkill", dependencies: [
+            "LLMAgent",
+            "LLMSubAgent",
+            .product(name: "LLMClient", package: "swift-llm-client"),
+            .product(name: "LLMTool", package: "swift-llm-client"),
+        ]),
         // Tests
         .testTarget(name: "LLMAgentTests", dependencies: ["LLMAgent"]),
         .testTarget(name: "LLMMCPTests", dependencies: ["LLMMCP"]),
         .testTarget(name: "LLMAgentSessionTests", dependencies: ["LLMAgentSession"]),
         .testTarget(name: "LLMiOSToolkitsTests", dependencies: ["LLMiOSToolkits"]),
         .testTarget(name: "LLMSubAgentTests", dependencies: ["LLMSubAgent"]),
+        .testTarget(name: "LLMSkillTests", dependencies: ["LLMSkill"]),
     ]
 )

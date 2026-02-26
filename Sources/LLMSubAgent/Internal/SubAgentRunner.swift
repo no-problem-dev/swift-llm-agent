@@ -9,7 +9,7 @@ import LLMAgent
 ///
 /// `PlainTextAgentSession.runAgentLoop()` の簡略版。
 /// ask_user サポートなし（完全自律）、ストリーミングなし。
-internal enum SubAgentRunner {
+package enum SubAgentRunner {
 
     /// サブエージェントを実行し、最終テキストを返す
     ///
@@ -24,7 +24,7 @@ internal enum SubAgentRunner {
     ///   - taskId: タスク識別子（並列実行時のイベント識別用）
     ///   - eventHandler: イベントハンドラー（オプション）
     /// - Returns: エージェントの最終テキスト応答
-    static func run<Client: AgentCapableClient>(
+    package static func run<Client: AgentCapableClient>(
         client: Client,
         model: Client.Model,
         prompt: String,
