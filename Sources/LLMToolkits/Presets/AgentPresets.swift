@@ -17,7 +17,7 @@ import LLMMCP
 /// - **型安全**: Swiftの型システムを活用した安全な構成
 public protocol AgentPreset: Sendable {
     /// プリセットのシステムプロンプト
-    static var systemPrompt: Prompt { get }
+    static var systemPrompt: SystemPrompt { get }
 
     /// プリセットのデフォルトツールセット
     static var defaultTools: ToolSet { get }
@@ -64,7 +64,7 @@ extension AgentPreset {
 /// ```
 public enum ResearcherPreset: AgentPreset {
     /// リサーチャー向けシステムプロンプト
-    public static let systemPrompt = SystemPrompts.researcher
+    public static let systemPrompt = SystemPromptCatalog.researcher
 
     /// リサーチャー向けデフォルトツールセット
     public static var defaultTools: ToolSet {
@@ -112,7 +112,7 @@ public enum ResearcherPreset: AgentPreset {
 /// ```
 public enum DataAnalystPreset: AgentPreset {
     /// データアナリスト向けシステムプロンプト
-    public static let systemPrompt = SystemPrompts.dataAnalyst
+    public static let systemPrompt = SystemPromptCatalog.dataAnalyst
 
     /// データアナリスト向けデフォルトツールセット
     public static var defaultTools: ToolSet {
@@ -153,7 +153,7 @@ public enum DataAnalystPreset: AgentPreset {
 /// ```
 public enum CodingAssistantPreset: AgentPreset {
     /// コーディングアシスタント向けシステムプロンプト
-    public static let systemPrompt = SystemPrompts.codingAssistant
+    public static let systemPrompt = SystemPromptCatalog.codingAssistant
 
     /// コーディングアシスタント向けデフォルトツールセット
     public static var defaultTools: ToolSet {
@@ -193,7 +193,7 @@ public enum CodingAssistantPreset: AgentPreset {
 /// ```
 public enum WriterPreset: AgentPreset {
     /// ライター向けシステムプロンプト
-    public static let systemPrompt = SystemPrompts.writer
+    public static let systemPrompt = SystemPromptCatalog.writer
 
     /// ライター向けデフォルトツールセット
     public static var defaultTools: ToolSet {
@@ -232,7 +232,7 @@ public enum WriterPreset: AgentPreset {
 /// ```
 public enum PlannerPreset: AgentPreset {
     /// プランナー向けシステムプロンプト
-    public static let systemPrompt = SystemPrompts.planner
+    public static let systemPrompt = SystemPromptCatalog.planner
 
     /// プランナー向けデフォルトツールセット
     public static var defaultTools: ToolSet {
@@ -299,7 +299,7 @@ public enum MinimalPreset: AgentPreset {
 ///
 /// ```swift
 /// let customPreset = CustomPresetBuilder()
-///     .withSystemPrompt(SystemPrompts.researcher)
+///     .withSystemPrompt(SystemPromptCatalog.researcher)
 ///     .addingVerbosity(.detailed)
 ///     .addingLanguage("Japanese")
 ///     .withTools {
@@ -311,7 +311,7 @@ public enum MinimalPreset: AgentPreset {
 ///     .build()
 /// ```
 public struct CustomPresetBuilder: Sendable {
-    private var systemPrompt: Prompt
+    private var systemPrompt: SystemPrompt
     private var tools: ToolSet
     private var configuration: AgentConfiguration
 
@@ -330,7 +330,7 @@ public struct CustomPresetBuilder: Sendable {
     }
 
     /// システムプロンプトを設定
-    public func withSystemPrompt(_ prompt: Prompt) -> CustomPresetBuilder {
+    public func withSystemPrompt(_ prompt: SystemPrompt) -> CustomPresetBuilder {
         var builder = self
         builder.systemPrompt = prompt
         return builder
@@ -339,7 +339,7 @@ public struct CustomPresetBuilder: Sendable {
     /// 詳細度修飾子を追加
     public func addingVerbosity(_ verbosity: PromptModifiers.Verbosity) -> CustomPresetBuilder {
         var builder = self
-        builder.systemPrompt = Prompt.customized(
+        builder.systemPrompt = SystemPrompt.customized(
             base: systemPrompt,
             modifiers: [verbosity.instruction]
         )
@@ -349,7 +349,7 @@ public struct CustomPresetBuilder: Sendable {
     /// 応答言語を指定
     public func addingLanguage(_ language: String) -> CustomPresetBuilder {
         var builder = self
-        builder.systemPrompt = Prompt.customized(
+        builder.systemPrompt = SystemPrompt.customized(
             base: systemPrompt,
             modifiers: [PromptModifiers.responseLanguage(language)]
         )
@@ -359,7 +359,7 @@ public struct CustomPresetBuilder: Sendable {
     /// 専門レベルを指定
     public func addingExpertiseLevel(_ level: PromptModifiers.ExpertiseLevel) -> CustomPresetBuilder {
         var builder = self
-        builder.systemPrompt = Prompt.customized(
+        builder.systemPrompt = SystemPrompt.customized(
             base: systemPrompt,
             modifiers: [level.instruction]
         )
@@ -409,7 +409,7 @@ public struct CustomPresetBuilder: Sendable {
 /// CustomPresetBuilderによって構築されたプリセット
 public struct BuiltCustomPreset: Sendable {
     /// システムプロンプト
-    public let systemPrompt: Prompt
+    public let systemPrompt: SystemPrompt
 
     /// ツールセット
     public let tools: ToolSet

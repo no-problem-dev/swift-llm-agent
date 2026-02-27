@@ -49,7 +49,7 @@ import LLMAgent
 /// // 1. セッション作成
 /// let session = ConversationalAgentSession(
 ///     client: AnthropicClient(apiKey: "..."),
-///     systemPrompt: Prompt { "あなたはリサーチアシスタントです。" },
+///     systemPrompt: SystemPrompt { "あなたはリサーチアシスタントです。" },
 ///     tools: ToolSet {
 ///         WebSearchTool()
 ///         ReadDocumentTool()
@@ -92,7 +92,7 @@ import LLMAgent
 /// // 1. セッションを作成（変数として保持）
 /// let session = ConversationalAgentSession(
 ///     client: client,
-///     systemPrompt: Prompt { "あなたはリサーチアシスタントです。" },
+///     systemPrompt: SystemPrompt { "あなたはリサーチアシスタントです。" },
 ///     tools: tools
 /// )
 ///

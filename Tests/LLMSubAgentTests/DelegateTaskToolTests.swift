@@ -259,7 +259,7 @@ private struct MockAgentClient: AgentCapableClient {
     func executeAgentStep(
         messages: [LLMMessage],
         model: String,
-        systemPrompt: Prompt?,
+        systemPrompt: SystemPrompt?,
         tools: ToolSet,
         toolChoice: ToolChoice?,
         responseSchema: JSONSchema?,

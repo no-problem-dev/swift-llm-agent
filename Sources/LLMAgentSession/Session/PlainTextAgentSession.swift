@@ -27,7 +27,7 @@ import LLMAgent
 /// ```swift
 /// let session = PlainTextAgentSession(
 ///     client: localClient,
-///     systemPrompt: Prompt { "アシスタントです。" },
+///     systemPrompt: SystemPrompt { "アシスタントです。" },
 ///     tools: ToolSet {
 ///         CalculatorTool()
 ///     }
@@ -51,7 +51,7 @@ public actor PlainTextAgentSession<Client: AgentCapableClient>
 
     private let client: Client
     private var messages: [LLMMessage] = []
-    private let systemPrompt: Prompt?
+    private let systemPrompt: SystemPrompt?
     private let tools: ToolSet
     private let configuration: AgentConfiguration
     private var interruptQueue: [String] = []
@@ -81,7 +81,7 @@ public actor PlainTextAgentSession<Client: AgentCapableClient>
     ///   - initialMessages: 復元する会話履歴（オプション）
     public init(
         client: Client,
-        systemPrompt: Prompt? = nil,
+        systemPrompt: SystemPrompt? = nil,
         tools: ToolSet,
         interactiveMode: Bool = false,
         configuration: AgentConfiguration = .default,

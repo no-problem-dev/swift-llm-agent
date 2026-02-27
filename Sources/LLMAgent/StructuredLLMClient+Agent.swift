@@ -73,7 +73,7 @@ extension AgentCapableClient {
         input: LLMInput,
         model: Model,
         tools: ToolSet,
-        systemPrompt: Prompt? = nil,
+        systemPrompt: SystemPrompt? = nil,
         configuration: AgentConfiguration = .default
     ) -> some AgentStepStream<Output> {
         runAgent(
@@ -98,7 +98,7 @@ extension AgentCapableClient {
         messages: [LLMMessage],
         model: Model,
         tools: ToolSet,
-        systemPrompt: Prompt? = nil,
+        systemPrompt: SystemPrompt? = nil,
         configuration: AgentConfiguration = .default
     ) -> some AgentStepStream<Output> {
         let context = AgentContext(

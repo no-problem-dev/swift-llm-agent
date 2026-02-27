@@ -17,7 +17,7 @@ import LLMAgent
 ///     var name: String { "researcher" }
 ///     var description: String { "Web search and information synthesis" }
 ///     var tools: ToolSet { ToolSet { WebSearchTool(); FetchTool() } }
-///     var systemPrompt: Prompt? { nil }
+///     var systemPrompt: SystemPrompt? { nil }
 ///     var configuration: AgentConfiguration { AgentConfiguration(maxSteps: 12) }
 /// }
 /// ```
@@ -32,7 +32,7 @@ public protocol SubAgentType: Sendable {
     var tools: ToolSet { get }
 
     /// システムプロンプト（オプション）
-    var systemPrompt: Prompt? { get }
+    var systemPrompt: SystemPrompt? { get }
 
     /// エージェント設定
     var configuration: AgentConfiguration { get }
@@ -42,7 +42,7 @@ public protocol SubAgentType: Sendable {
 
 extension SubAgentType {
     /// デフォルトのシステムプロンプト（nil）
-    public var systemPrompt: Prompt? { nil }
+    public var systemPrompt: SystemPrompt? { nil }
 
     /// デフォルトのエージェント設定
     public var configuration: AgentConfiguration { .default }
@@ -69,7 +69,7 @@ public struct SubAgentTypeDefinition: SubAgentType {
     public let name: String
     public let description: String
     public let tools: ToolSet
-    public let systemPrompt: Prompt?
+    public let systemPrompt: SystemPrompt?
     public let configuration: AgentConfiguration
 
     /// SubAgentTypeDefinition を初期化
@@ -84,7 +84,7 @@ public struct SubAgentTypeDefinition: SubAgentType {
         name: String,
         description: String,
         tools: ToolSet = ToolSet {},
-        systemPrompt: Prompt? = nil,
+        systemPrompt: SystemPrompt? = nil,
         configuration: AgentConfiguration = .default
     ) {
         self.name = name

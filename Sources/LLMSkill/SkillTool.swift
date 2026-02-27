@@ -206,11 +206,11 @@ public struct SkillTool<Client: AgentCapableClient>: Tool
         return toolPool
     }
 
-    private func resolveSystemPrompt(for skill: any AgentSkill) -> Prompt {
+    private func resolveSystemPrompt(for skill: any AgentSkill) -> SystemPrompt {
         if let explicit = skill.systemPrompt {
             return explicit
         }
-        return Prompt(stringLiteral: skill.instructions)
+        return SystemPrompt(stringLiteral: skill.instructions)
     }
 
     private func executeForkForeground(

@@ -29,7 +29,7 @@ package enum SubAgentRunner {
         model: Client.Model,
         prompt: String,
         tools: ToolSet,
-        systemPrompt: Prompt?,
+        systemPrompt: SystemPrompt?,
         configuration: AgentConfiguration,
         timeout: Duration?,
         taskId: UUID,
@@ -79,7 +79,7 @@ package enum SubAgentRunner {
         model: Client.Model,
         prompt: String,
         tools: ToolSet,
-        systemPrompt: Prompt?,
+        systemPrompt: SystemPrompt?,
         configuration: AgentConfiguration,
         taskId: UUID,
         eventHandler: SubAgentEventHandler?

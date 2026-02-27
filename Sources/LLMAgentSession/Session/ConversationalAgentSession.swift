@@ -52,7 +52,7 @@ private enum FinalOutputConstants {
 /// ```swift
 /// let session = ConversationalAgentSession(
 ///     client: AnthropicClient(apiKey: "..."),
-///     systemPrompt: Prompt { "あなたはリサーチアシスタントです。" },
+///     systemPrompt: SystemPrompt { "あなたはリサーチアシスタントです。" },
 ///     tools: ToolSet {
 ///         WebSearchTool()
 ///     }
@@ -80,7 +80,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
 
     private let client: Client
     private var messages: [LLMMessage] = []
-    private let systemPrompt: Prompt?
+    private let systemPrompt: SystemPrompt?
     private let tools: ToolSet
     private let configuration: AgentConfiguration
     private var interruptQueue: [String] = []
@@ -114,7 +114,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
     ///     過去のセッションを復元する場合に使用します。
     public init(
         client: Client,
-        systemPrompt: Prompt? = nil,
+        systemPrompt: SystemPrompt? = nil,
         tools: ToolSet,
         interactiveMode: Bool = false,
         configuration: AgentConfiguration = .default,

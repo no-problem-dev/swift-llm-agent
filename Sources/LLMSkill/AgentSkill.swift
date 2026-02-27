@@ -73,7 +73,7 @@ public protocol AgentSkill: Sendable {
     /// サブエージェント用のシステムプロンプト（fork モード用追加プロンプト）
     ///
     /// `nil` の場合、`instructions` がシステムプロンプトとして使用される
-    var systemPrompt: Prompt? { get }
+    var systemPrompt: SystemPrompt? { get }
 
     /// サブエージェントのエージェント設定（fork モード用）
     var configuration: AgentConfiguration { get }
@@ -102,7 +102,7 @@ public protocol AgentSkill: Sendable {
 extension AgentSkill {
     public var allowedTools: [String]? { nil }
     public var tools: ToolSet { ToolSet() }
-    public var systemPrompt: Prompt? { nil }
+    public var systemPrompt: SystemPrompt? { nil }
     public var configuration: AgentConfiguration { .default }
     public var isUserInvocable: Bool { true }
     public var isModelInvocable: Bool { true }
@@ -134,7 +134,7 @@ public struct AgentSkillDefinition: AgentSkill {
     public let instructions: String
     public let allowedTools: [String]?
     public let tools: ToolSet
-    public let systemPrompt: Prompt?
+    public let systemPrompt: SystemPrompt?
     public let configuration: AgentConfiguration
     public let isUserInvocable: Bool
     public let isModelInvocable: Bool
@@ -148,7 +148,7 @@ public struct AgentSkillDefinition: AgentSkill {
         instructions: String,
         allowedTools: [String]? = nil,
         tools: ToolSet = ToolSet(),
-        systemPrompt: Prompt? = nil,
+        systemPrompt: SystemPrompt? = nil,
         configuration: AgentConfiguration = .default,
         isUserInvocable: Bool = true,
         isModelInvocable: Bool = true,

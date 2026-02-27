@@ -20,12 +20,15 @@ import LLMClient
 ///     input: "Research the latest AI trends",
 ///     model: .sonnet,
 ///     tools: tools,
-///     systemPrompt: SystemPrompts.researcher
+///     systemPrompt: SystemPromptCatalog.researcher
 /// ) {
 ///     // ステップを処理
 /// }
+///
+/// // 全プロンプトを取得
+/// let allPrompts = SystemPromptCatalog.all
 /// ```
-public enum SystemPrompts {
+public enum SystemPromptCatalog {
 
     // MARK: - コアエージェントプロンプト
 
@@ -33,7 +36,12 @@ public enum SystemPrompts {
     ///
     /// 情報収集、分析、統合タスクに最適化されています。
     /// GPT-4.1 のエージェントプロンプティングベストプラクティスに準拠。
-    public static let researcher = Prompt {
+    public static let researcher = SystemPrompt(
+        "Researcher",
+        description: "情報収集、分析、統合タスクに最適化されたリサーチアシスタント",
+        iconName: "magnifyingglass",
+        tags: ["research", "analysis", "web"]
+    ) {
         // Role and Objective
         PromptComponent.role(
             "You are an expert research assistant with deep analytical skills and " +
@@ -84,7 +92,12 @@ public enum SystemPrompts {
     /// データ分析スペシャリスト
     ///
     /// 数値分析、パターン認識、データ解釈に最適化されています。
-    public static let dataAnalyst = Prompt {
+    public static let dataAnalyst = SystemPrompt(
+        "Data Analyst",
+        description: "数値分析、パターン認識、データ解釈に最適化されたアナリスト",
+        iconName: "chart.bar",
+        tags: ["data", "analysis", "statistics"]
+    ) {
         // Role and Objective
         PromptComponent.role(
             "You are a senior data analyst specializing in quantitative analysis, " +
@@ -134,7 +147,12 @@ public enum SystemPrompts {
     ///
     /// コード生成、デバッグ、リファクタリング、技術文書作成を含む
     /// ソフトウェア開発タスクに最適化されています。
-    public static let codingAssistant = Prompt {
+    public static let codingAssistant = SystemPrompt(
+        "Coding Assistant",
+        description: "コード生成、デバッグ、リファクタリングに最適化されたアシスタント",
+        iconName: "chevron.left.forwardslash.chevron.right",
+        tags: ["coding", "development", "engineering"]
+    ) {
         // Role and Objective
         PromptComponent.role(
             "You are an expert software engineer with extensive experience across " +
@@ -183,7 +201,12 @@ public enum SystemPrompts {
     /// ライティング・コンテンツ作成アシスタント
     ///
     /// 文章の作成、編集、推敲に最適化されています。
-    public static let writer = Prompt {
+    public static let writer = SystemPrompt(
+        "Writer",
+        description: "文章の作成、編集、推敲に最適化されたライティングアシスタント",
+        iconName: "pencil.line",
+        tags: ["writing", "content", "editing"]
+    ) {
         // Role and Objective
         PromptComponent.role(
             "You are a professional writer and editor with expertise in creating " +
@@ -229,7 +252,12 @@ public enum SystemPrompts {
     /// タスク計画・プロジェクト管理アシスタント
     ///
     /// 複雑なタスクの分解、アクションプラン作成、進捗管理に最適化されています。
-    public static let planner = Prompt {
+    public static let planner = SystemPrompt(
+        "Planner",
+        description: "タスク計画、プロジェクト管理、作業分解に最適化されたアシスタント",
+        iconName: "list.bullet.clipboard",
+        tags: ["planning", "project", "management"]
+    ) {
         // Role and Objective
         PromptComponent.role(
             "You are an expert project planner and task management specialist " +
@@ -271,6 +299,17 @@ public enum SystemPrompts {
             "Acknowledge when additional information is needed for accurate planning."
         )
     }
+
+    // MARK: - All Prompts
+
+    /// 全プロンプトの一覧
+    public static let all: [SystemPrompt] = [
+        researcher,
+        dataAnalyst,
+        codingAssistant,
+        writer,
+        planner,
+    ]
 }
 
 // MARK: - AgentBehaviors
@@ -354,7 +393,7 @@ public enum AgentBehaviors {
     /// 統合エージェント行動指示
     ///
     /// 便利のために3つのコア行動指示をすべて含みます。
-    public static let allBehaviors = Prompt {
+    public static let allBehaviors = SystemPrompt {
         persistence
         toolCalling
         planning
@@ -438,9 +477,9 @@ public enum PromptModifiers {
     }
 }
 
-// MARK: - Prompt Extension
+// MARK: - SystemPrompt Extension
 
-extension Prompt {
+extension SystemPrompt {
 
     /// ベースプロンプトと修飾子を組み合わせてカスタマイズされたプロンプトを作成
     ///
@@ -452,8 +491,8 @@ extension Prompt {
     /// ## 使用例
     ///
     /// ```swift
-    /// let customPrompt = Prompt.customized(
-    ///     base: SystemPrompts.researcher,
+    /// let customPrompt = SystemPrompt.customized(
+    ///     base: SystemPromptCatalog.researcher,
     ///     modifiers: [
     ///         PromptModifiers.responseLanguage("Japanese"),
     ///         PromptModifiers.Verbosity.concise.instruction
@@ -461,9 +500,9 @@ extension Prompt {
     /// )
     /// ```
     public static func customized(
-        base: Prompt,
+        base: SystemPrompt,
         modifiers: [PromptComponent]
-    ) -> Prompt {
-        Prompt(components: base.components + modifiers)
+    ) -> SystemPrompt {
+        SystemPrompt(components: base.components + modifiers)
     }
 }
