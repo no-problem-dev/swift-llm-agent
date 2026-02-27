@@ -67,8 +67,10 @@ public final class ScriptToolKit: ToolKit, @unchecked Sendable {
                 Use this for data processing, text transformation, calculations, \
                 or any task that requires custom logic beyond what other tools provide. \
                 The `ios` object provides bridged APIs: \
+                `ios.cwd` (working directory path string), \
                 `ios.readFile(path)`, `ios.writeFile(path, content)`, `ios.listFiles(path)`, \
                 `ios.fetch(url)`, `ios.log(message)`. \
+                Relative paths in file APIs are resolved against `ios.cwd`. \
                 The return value of the last expression is captured as the result.
                 """,
             inputSchema: .object(
@@ -214,6 +216,9 @@ public final class ScriptBridge: @unchecked Sendable {
     /// アクセス許可されたパス（nil の場合は全パス許可）
     private let allowedPaths: [String]?
 
+    /// 相対パスの基準となる作業ディレクトリ
+    private let workingDirectory: String
+
     /// FileManager
     private let fileManager: FileManager
 
@@ -228,14 +233,19 @@ public final class ScriptBridge: @unchecked Sendable {
     /// - Parameters:
     ///   - allowedPaths: ファイルアクセスを許可するパスの配列（nil で全パス許可）
     ///     iOS ではサンドボックスが OS レベルで制限するため、nil で問題ありません。
+    ///   - workingDirectory: 相対パスの基準ディレクトリ（nil でアプリの Documents ディレクトリ）
     ///   - httpTimeout: HTTP リクエストのタイムアウト秒数（デフォルト: 15）
     public init(
         allowedPaths: [String]? = nil,
+        workingDirectory: String? = nil,
         httpTimeout: TimeInterval = 15
     ) {
         self.allowedPaths = allowedPaths?.map { path in
             NSString(string: path).expandingTildeInPath
         }
+        self.workingDirectory = workingDirectory
+            ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.path
+            ?? FileManager.default.currentDirectoryPath
         self.fileManager = FileManager.default
 
         let config = URLSessionConfiguration.default
@@ -245,10 +255,21 @@ public final class ScriptBridge: @unchecked Sendable {
         self.httpTimeout = httpTimeout
     }
 
-    /// パスが許可されているかチェック
+    /// パスを解決し、許可されているかチェック
+    ///
+    /// 相対パス（`/` で始まらないパス）は `workingDirectory` を基準に解決される。
     private func validatePath(_ path: String) throws -> String {
         let expandedPath = NSString(string: path).expandingTildeInPath
-        let resolvedPath = URL(fileURLWithPath: expandedPath).standardizedFileURL.path
+
+        // 相対パスなら workingDirectory を基準に解決
+        let absolutePath: String
+        if expandedPath.hasPrefix("/") {
+            absolutePath = expandedPath
+        } else {
+            absolutePath = (workingDirectory as NSString).appendingPathComponent(expandedPath)
+        }
+
+        let resolvedPath = URL(fileURLWithPath: absolutePath).standardizedFileURL.path
 
         // allowedPaths が nil なら全パス許可
         guard let allowedPaths else { return resolvedPath }
@@ -267,6 +288,12 @@ public final class ScriptBridge: @unchecked Sendable {
     /// JSContext に iOS ブリッジ API を注入
     func install(into context: JSContext, logBuffer: LogBuffer) {
         let ios = JSValue(newObjectIn: context)!
+
+        // ios.cwd → String (作業ディレクトリパス)
+        ios.setObject(
+            workingDirectory,
+            forKeyedSubscript: "cwd" as NSString
+        )
 
         // ios.readFile(path) → String
         let readFile: @convention(block) (String) -> String = { [self] path in

@@ -13,14 +13,17 @@ import LLMTool
 /// ## 使用例
 ///
 /// ```swift
-/// // iOS: サンドボックス内は全てアクセス可能
+/// // iOS: サンドボックス内は全てアクセス可能（Documents が working directory）
 /// let tools = ToolSet {
 ///     FileSystemToolKit()
 /// }
 ///
 /// // macOS: 特定ディレクトリのみ許可
 /// let tools = ToolSet {
-///     FileSystemToolKit(allowedPaths: ["/Users/user/projects"])
+///     FileSystemToolKit(
+///         allowedPaths: ["/Users/user/projects"],
+///         workingDirectory: "/Users/user/projects"
+///     )
 /// }
 /// ```
 ///
@@ -45,6 +48,12 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
     /// 許可されたパス（nil の場合は全パス許可）
     private let allowedPaths: [String]?
 
+    /// 相対パスの基準となる作業ディレクトリ
+    ///
+    /// 相対パス（`/` で始まらないパス）はこのディレクトリを基準に解決されます。
+    /// デフォルトではアプリの Documents ディレクトリが使用されます。
+    private let workingDirectory: String
+
     /// FileManager
     private let fileManager: FileManager
 
@@ -52,14 +61,23 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
 
     /// FileSystemToolKitを作成
     ///
-    /// - Parameter allowedPaths: アクセスを許可するパスの配列（nil で全パス許可）
-    ///   チルダ（~）はホームディレクトリに展開されます。
-    ///   iOS ではサンドボックスが OS レベルで制限するため、nil（全許可）で問題ありません。
-    public init(allowedPaths: [String]? = nil) {
+    /// - Parameters:
+    ///   - allowedPaths: アクセスを許可するパスの配列（nil で全パス許可）
+    ///     チルダ（~）はホームディレクトリに展開されます。
+    ///     iOS ではサンドボックスが OS レベルで制限するため、nil（全許可）で問題ありません。
+    ///   - workingDirectory: 相対パスの基準ディレクトリ（nil でアプリの Documents ディレクトリ）
+    public init(allowedPaths: [String]? = nil, workingDirectory: String? = nil) {
         self.allowedPaths = allowedPaths?.map { path in
             NSString(string: path).expandingTildeInPath
         }
+        self.workingDirectory = workingDirectory ?? Self.defaultWorkingDirectory
         self.fileManager = FileManager.default
+    }
+
+    /// デフォルトの作業ディレクトリ（Documents）
+    private static var defaultWorkingDirectory: String {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.path
+            ?? FileManager.default.currentDirectoryPath
     }
 
     // MARK: - ToolKit Protocol
@@ -82,10 +100,22 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
 
     // MARK: - Path Validation
 
-    /// パスが許可されているかチェック
+    /// パスを解決し、許可されているかチェック
+    ///
+    /// 相対パス（`/` で始まらないパス）は `workingDirectory` を基準に解決される。
+    /// `"."` は `workingDirectory` そのものを返す。
     private func validatePath(_ path: String) throws -> String {
         let expandedPath = NSString(string: path).expandingTildeInPath
-        let resolvedPath = URL(fileURLWithPath: expandedPath).standardizedFileURL.path
+
+        // 相対パスなら workingDirectory を基準に解決
+        let absolutePath: String
+        if expandedPath.hasPrefix("/") {
+            absolutePath = expandedPath
+        } else {
+            absolutePath = (workingDirectory as NSString).appendingPathComponent(expandedPath)
+        }
+
+        let resolvedPath = URL(fileURLWithPath: absolutePath).standardizedFileURL.path
 
         // allowedPaths が nil なら全パス許可
         guard let allowedPaths else { return resolvedPath }
@@ -108,10 +138,10 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
     private var readFileTool: BuiltInTool {
         BuiltInTool(
             name: "read_file",
-            description: "Read the complete contents of a file from the file system. Only works within allowed directories.",
+            description: "Read the complete contents of a file. Working directory: \(workingDirectory). Relative paths are resolved against this directory. Use absolute paths to access other locations.",
             inputSchema: .object(
                 properties: [
-                    "path": .string(description: "Path to the file to read")
+                    "path": .string(description: "Absolute or relative path to the file to read")
                 ],
                 required: ["path"]
             ),
@@ -182,10 +212,10 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
     private var writeFileTool: BuiltInTool {
         BuiltInTool(
             name: "write_file",
-            description: "Create a new file or overwrite an existing file with new contents. Creates parent directories if needed.",
+            description: "Create a new file or overwrite an existing file with new contents. Creates parent directories if needed. Working directory: \(workingDirectory). Relative paths are resolved against this directory.",
             inputSchema: .object(
                 properties: [
-                    "path": .string(description: "Path where to write the file"),
+                    "path": .string(description: "Absolute or relative path where to write the file"),
                     "content": .string(description: "Content to write to the file")
                 ],
                 required: ["path", "content"]
@@ -328,10 +358,10 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
     private var listDirectoryTool: BuiltInTool {
         BuiltInTool(
             name: "list_directory",
-            description: "Get a detailed listing of all files and directories in a specified path.",
+            description: "Get a detailed listing of all files and directories in a specified path. Working directory: \(workingDirectory). Use '.' to list the working directory.",
             inputSchema: .object(
                 properties: [
-                    "path": .string(description: "Path of the directory to list")
+                    "path": .string(description: "Absolute or relative path of the directory to list")
                 ],
                 required: ["path"]
             ),
@@ -366,10 +396,10 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
     private var directoryTreeTool: BuiltInTool {
         BuiltInTool(
             name: "directory_tree",
-            description: "Get a recursive tree view of files and directories. Useful for understanding project structure.",
+            description: "Get a recursive tree view of files and directories. Useful for understanding project structure. Working directory: \(workingDirectory). Use '.' to explore the working directory.",
             inputSchema: .object(
                 properties: [
-                    "path": .string(description: "Path of the directory to explore"),
+                    "path": .string(description: "Absolute or relative path of the directory to explore"),
                     "maxDepth": .integer(description: "Maximum depth to traverse (default: 3, max: 10)")
                 ],
                 required: ["path"]
@@ -477,11 +507,11 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
     private var grepFilesTool: BuiltInTool {
         BuiltInTool(
             name: "grep_files",
-            description: "Search file contents using a regular expression pattern. Returns matching lines with file paths and line numbers. Skips binary files automatically.",
+            description: "Search file contents using a regular expression pattern. Returns matching lines with file paths and line numbers. Skips binary files automatically. Default search path: \(workingDirectory).",
             inputSchema: .object(
                 properties: [
                     "pattern": .string(description: "Regular expression pattern to search for"),
-                    "path": .string(description: "Directory to search in (default: first allowed path)"),
+                    "path": .string(description: "Directory to search in (default: working directory)"),
                     "glob": .string(description: "File name filter pattern (e.g., '*.swift', '*.ts')"),
                     "context_lines": .integer(description: "Number of context lines before and after each match (default: 0)"),
                     "max_results": .integer(description: "Maximum number of matches to return (default: 100)")
@@ -498,10 +528,8 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
             let searchPath: String
             if let inputPath = input.path {
                 searchPath = try validatePath(inputPath)
-            } else if let firstAllowed = allowedPaths?.first {
-                searchPath = firstAllowed
             } else {
-                searchPath = fileManager.currentDirectoryPath
+                searchPath = workingDirectory
             }
 
             let maxResults = min(input.maxResults ?? 100, 500)
