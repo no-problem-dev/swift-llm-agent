@@ -14,7 +14,7 @@ import LLMAgent
 
     let tool = DelegateTaskTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         catalog: catalog
     )
 
@@ -31,20 +31,20 @@ import LLMAgent
 
     let tool = DelegateTaskTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         catalog: catalog
     )
 
     let schema = tool.inputSchema
     let data = try schema.toJSONData()
-    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+    let json: [String: Any]? = try JSONSerialization.jsonObject(with: data) as? [String: Any]
 
     // properties が存在する
-    let properties = json?["properties"] as? [String: Any]
+    let properties: [String: Any]? = json?["properties"] as? [String: Any]
     #expect(properties != nil)
 
     // agent_type に enum 値が含まれる
-    let agentType = properties?["agent_type"] as? [String: Any]
+    let agentType: [String: Any]? = properties?["agent_type"] as? [String: Any]
     let enumValues = agentType?["enum"] as? [String]
     #expect(enumValues == ["researcher", "writer"])
 
@@ -62,7 +62,7 @@ import LLMAgent
 
     let tool = DelegateTaskTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         catalog: catalog
     )
 
@@ -79,7 +79,7 @@ import LLMAgent
 
     let tool = DelegateTaskTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         catalog: catalog
     )
 
@@ -107,13 +107,13 @@ import LLMAgent
 
     let tool1 = DelegateTaskTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         catalog: catalog1
     )
 
     let tool2 = DelegateTaskTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         catalog: catalog2
     )
 
@@ -128,7 +128,7 @@ import LLMAgent
 
     let tool = DelegateTaskTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         catalog: catalog
     )
 
@@ -153,15 +153,15 @@ import LLMAgent
     let registry = BackgroundTaskRegistry()
     let tool = DelegateTaskTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         catalog: catalog,
         backgroundTaskRegistry: registry
     )
 
     let schema = tool.inputSchema
     let data = try schema.toJSONData()
-    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-    let properties = json?["properties"] as? [String: Any]
+    let json: [String: Any]? = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+    let properties: [String: Any]? = json?["properties"] as? [String: Any]
 
     #expect(properties?["run_in_background"] != nil)
 }
@@ -173,14 +173,14 @@ import LLMAgent
 
     let tool = DelegateTaskTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         catalog: catalog
     )
 
     let schema = tool.inputSchema
     let data = try schema.toJSONData()
-    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-    let properties = json?["properties"] as? [String: Any]
+    let json: [String: Any]? = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+    let properties: [String: Any]? = json?["properties"] as? [String: Any]
 
     #expect(properties?["run_in_background"] == nil)
 }
@@ -193,7 +193,7 @@ import LLMAgent
     let registry = BackgroundTaskRegistry()
     let tool = DelegateTaskTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         catalog: catalog,
         backgroundTaskRegistry: registry
     )
@@ -210,7 +210,7 @@ import LLMAgent
     let registry = BackgroundTaskRegistry()
     let tool = DelegateTaskTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         catalog: catalog,
         backgroundTaskRegistry: registry
     )

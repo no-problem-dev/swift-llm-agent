@@ -10,7 +10,7 @@ import Foundation
 ///
 /// ```swift
 /// let registry = SkillRegistryDefinition {
-///     BuiltInSkillKit()
+///     InteractiveSkillKit()
 ///     CustomSkillKit()
 /// }
 /// ```

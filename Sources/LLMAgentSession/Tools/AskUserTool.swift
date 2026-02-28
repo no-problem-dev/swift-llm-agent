@@ -46,7 +46,7 @@ extension AskUserTool: InteractiveTool {
         return InteractionRequest(
             type: .textInput,
             prompt: question,
-            payload: .textInput(placeholder: nil, multiline: false),
+            payload: .textInput(placeholder: nil, multiline: true),
             dismissible: false
         )
     }

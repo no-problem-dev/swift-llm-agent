@@ -19,7 +19,7 @@ import LLMAgent
 
     let tool = SkillTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         registry: registry
     )
 
@@ -44,18 +44,18 @@ import LLMAgent
 
     let tool = SkillTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         registry: registry
     )
 
     let schema = tool.inputSchema
     let data = try schema.toJSONData()
-    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+    let json: [String: Any]? = try JSONSerialization.jsonObject(with: data) as? [String: Any]
 
-    let properties = json?["properties"] as? [String: Any]
+    let properties: [String: Any]? = json?["properties"] as? [String: Any]
     #expect(properties != nil)
 
-    let skillName = properties?["skill_name"] as? [String: Any]
+    let skillName: [String: Any]? = properties?["skill_name"] as? [String: Any]
     let enumValues = skillName?["enum"] as? [String]
     #expect(enumValues == ["summarize", "translate"])
 
@@ -82,15 +82,15 @@ import LLMAgent
 
     let tool = SkillTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         registry: registry
     )
 
     let schema = tool.inputSchema
     let data = try schema.toJSONData()
-    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-    let properties = json?["properties"] as? [String: Any]
-    let skillName = properties?["skill_name"] as? [String: Any]
+    let json: [String: Any]? = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+    let properties: [String: Any]? = json?["properties"] as? [String: Any]
+    let skillName: [String: Any]? = properties?["skill_name"] as? [String: Any]
     let enumValues = skillName?["enum"] as? [String]
 
     #expect(enumValues == ["visible"])
@@ -116,7 +116,7 @@ import LLMAgent
 
     let tool = SkillTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         registry: registry
     )
 
@@ -142,7 +142,7 @@ import LLMAgent
 
     let tool = SkillTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         registry: registry
     )
 
@@ -175,7 +175,7 @@ import LLMAgent
 
     let tool = SkillTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         registry: registry
     )
 
@@ -203,7 +203,7 @@ import LLMAgent
 
     let tool = SkillTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         registry: registry
     )
 
@@ -224,7 +224,7 @@ import LLMAgent
 
     let tool = SkillTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         registry: registry
     )
 
@@ -254,15 +254,15 @@ import LLMAgent
     let bgRegistry = BackgroundTaskRegistry()
     let tool = SkillTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         registry: registry,
         backgroundTaskRegistry: bgRegistry
     )
 
     let schema = tool.inputSchema
     let data = try schema.toJSONData()
-    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-    let properties = json?["properties"] as? [String: Any]
+    let json: [String: Any]? = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+    let properties: [String: Any]? = json?["properties"] as? [String: Any]
 
     #expect(properties?["run_in_background"] != nil)
 }
@@ -279,14 +279,14 @@ import LLMAgent
 
     let tool = SkillTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         registry: registry
     )
 
     let schema = tool.inputSchema
     let data = try schema.toJSONData()
-    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-    let properties = json?["properties"] as? [String: Any]
+    let json: [String: Any]? = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+    let properties: [String: Any]? = json?["properties"] as? [String: Any]
 
     #expect(properties?["run_in_background"] == nil)
 }
@@ -304,7 +304,7 @@ import LLMAgent
     let bgRegistry = BackgroundTaskRegistry()
     let tool = SkillTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         registry: registry,
         backgroundTaskRegistry: bgRegistry
     )
@@ -326,7 +326,7 @@ import LLMAgent
     let bgRegistry = BackgroundTaskRegistry()
     let tool = SkillTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         registry: registry,
         backgroundTaskRegistry: bgRegistry
     )
@@ -355,7 +355,7 @@ import LLMAgent
 
     let tool = SkillTool(
         client: MockAgentClient(),
-        model: "test-model",
+        modelResolver: { _ in "test-model" },
         registry: registry
     )
 

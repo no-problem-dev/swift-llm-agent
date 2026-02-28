@@ -3,47 +3,48 @@ import Foundation
 @testable import LLMSkill
 import LLMAgent
 
-// MARK: - BuiltInSkillKit Tests
+// MARK: - InteractiveSkillKit Tests
 
-@Test func testBuiltInSkillKitName() {
-    let kit = BuiltInSkillKit()
-    #expect(kit.name == "built-in")
+@Test func testInteractiveSkillKitName() {
+    let kit = InteractiveSkillKit()
+    #expect(kit.name == "interactive")
 }
 
-@Test func testBuiltInSkillKitContainsTwoSkills() {
-    let kit = BuiltInSkillKit()
-    #expect(kit.skillCount == 2)
+@Test func testInteractiveSkillKitContainsEightSkills() {
+    let kit = InteractiveSkillKit()
+    #expect(kit.skillCount == 8)
 }
 
-@Test func testBuiltInSkillKitSkillNames() {
-    let kit = BuiltInSkillKit()
-    #expect(kit.skillNames == ["summarize", "code-review"])
+@Test func testInteractiveSkillKitSkillNames() {
+    let kit = InteractiveSkillKit()
+    #expect(kit.skillNames == [
+        "morning", "journal", "plan", "research",
+        "draft", "brainstorm", "decide", "learn",
+    ])
 }
 
-@Test func testSummarizeSkillProperties() {
-    let kit = BuiltInSkillKit()
-    let skill = kit.skill(named: "summarize")
+@Test func testMorningSkillProperties() {
+    let kit = InteractiveSkillKit()
+    let skill = kit.skill(named: "morning")
 
     #expect(skill != nil)
-    #expect(skill?.executionMode == .fork)
-    #expect(skill?.instructions.contains("Summarization Instructions") == true)
-    #expect(skill?.metadata?.version == "1.0.0")
-    #expect(skill?.metadata?.tags?.contains("summarization") == true)
+    #expect(skill?.executionMode == .inline)
+    #expect(skill?.isModelInvocable == false)
+    #expect(skill?.instructions.contains("朝のブリーフィング") == true)
+    #expect(skill?.metadata?.version == "2.0.0")
+    #expect(skill?.metadata?.tags?.contains("morning") == true)
 }
 
-@Test func testCodeReviewSkillProperties() {
-    let kit = BuiltInSkillKit()
-    let skill = kit.skill(named: "code-review")
-
-    #expect(skill != nil)
-    #expect(skill?.executionMode == .fork)
-    #expect(skill?.instructions.contains("Code Review Instructions") == true)
-    #expect(skill?.configuration.maxSteps == 8)
-    #expect(skill?.metadata?.tags?.contains("code") == true)
+@Test func testAllSkillsAreInlineMode() {
+    let kit = InteractiveSkillKit()
+    for skill in kit.skills {
+        #expect(skill.executionMode == .inline, "Skill \(skill.name) should be inline mode")
+        #expect(skill.isModelInvocable == false, "Skill \(skill.name) should not be model-invocable")
+    }
 }
 
 @Test func testSkillKitLookupNonexistent() {
-    let kit = BuiltInSkillKit()
+    let kit = InteractiveSkillKit()
     #expect(kit.skill(named: "nonexistent") == nil)
 }
 
@@ -51,17 +52,17 @@ import LLMAgent
 
 @Test func testRegistryBuilderAcceptsSkillKit() {
     let registry = SkillRegistryDefinition {
-        BuiltInSkillKit()
+        InteractiveSkillKit()
     }
 
-    #expect(registry.skills.count == 2)
-    #expect(registry.skill(named: "summarize") != nil)
-    #expect(registry.skill(named: "code-review") != nil)
+    #expect(registry.skills.count == 8)
+    #expect(registry.skill(named: "morning") != nil)
+    #expect(registry.skill(named: "learn") != nil)
 }
 
 @Test func testRegistryBuilderMixesSkillKitAndIndividualSkills() {
     let registry = SkillRegistryDefinition {
-        BuiltInSkillKit()
+        InteractiveSkillKit()
         AgentSkillDefinition(
             name: "custom",
             description: "Custom skill",
@@ -69,9 +70,8 @@ import LLMAgent
         )
     }
 
-    #expect(registry.skills.count == 3)
-    #expect(registry.skill(named: "summarize") != nil)
-    #expect(registry.skill(named: "code-review") != nil)
+    #expect(registry.skills.count == 9)
+    #expect(registry.skill(named: "morning") != nil)
     #expect(registry.skill(named: "custom") != nil)
 }
 
@@ -99,10 +99,10 @@ private struct TestSkillKit: SkillKit {
 
 @Test func testRegistryBuilderWithMultipleSkillKits() {
     let registry = SkillRegistryDefinition {
-        BuiltInSkillKit()
+        InteractiveSkillKit()
         TestSkillKit()
     }
 
-    #expect(registry.skills.count == 3)
+    #expect(registry.skills.count == 9)
     #expect(registry.skill(named: "skill-a") != nil)
 }
