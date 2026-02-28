@@ -40,7 +40,7 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
     where Client.Model: Sendable
 {
     private let client: Client
-    private let model: Client.Model
+    private let modelResolver: ModelTierResolver<Client.Model>
     private let catalog: any SubAgentCatalog
     private let timeout: Duration?
     private let eventHandler: SubAgentEventHandler?
@@ -52,21 +52,21 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
     ///
     /// - Parameters:
     ///   - client: LLM クライアント
-    ///   - model: サブエージェントが使用するモデル
+    ///   - modelResolver: モデルティアを具体的なモデルに解決するクロージャ
     ///   - catalog: サブエージェントタイプのカタログ
     ///   - timeout: タイムアウト（オプション）
     ///   - eventHandler: イベントハンドラー（オプション）
     ///   - backgroundTaskRegistry: バックグラウンドタスクレジストリ（nil の場合バックグラウンド実行無効）
     public init(
         client: Client,
-        model: Client.Model,
+        modelResolver: @escaping ModelTierResolver<Client.Model>,
         catalog: any SubAgentCatalog,
         timeout: Duration? = nil,
         eventHandler: SubAgentEventHandler? = nil,
         backgroundTaskRegistry: BackgroundTaskRegistry? = nil
     ) {
         self.client = client
-        self.model = model
+        self.modelResolver = modelResolver
         self.catalog = catalog
         self.timeout = timeout
         self.eventHandler = eventHandler
@@ -148,6 +148,9 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
         // タスク識別子を生成（並列実行時のイベント識別用）
         let taskId = UUID()
 
+        // モデルティアに基づいてモデルを解決
+        let model = modelResolver(agentType.modelTier)
+
         // バックグラウンド実行
         if args.runInBackground == true, let registry = backgroundTaskRegistry {
             await eventHandler?(
@@ -158,15 +161,16 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
                 )
             )
 
+            let backgroundConfig = agentType.configuration.forBackground
             let taskHandle = Task<Void, Never> {
                 do {
                     let result = try await SubAgentRunner.run(
                         client: self.client,
-                        model: self.model,
+                        model: model,
                         prompt: args.prompt,
                         tools: agentType.tools,
                         systemPrompt: agentType.systemPrompt,
-                        configuration: agentType.configuration,
+                        configuration: backgroundConfig,
                         timeout: self.timeout,
                         taskId: taskId,
                         eventHandler: self.eventHandler
@@ -190,7 +194,7 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
             return .text("Background task started. task_id: \(taskId.uuidString)")
         }
 
-        // フォアグラウンド実行（既存パス）
+        // フォアグラウンド実行
         await eventHandler?(.started(taskId: taskId, agentType: args.agentType, description: args.description))
 
         do {

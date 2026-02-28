@@ -122,6 +122,24 @@ public struct AgentConfiguration: Sendable {
         self.thinkingMode = thinkingMode
         self.skipFinalOutput = skipFinalOutput
     }
+
+    /// バックグラウンド実行用の設定を返す
+    ///
+    /// インタラクティブツールを禁止した設定のコピーを返します。
+    /// バックグラウンドではユーザーとのインタラクションが不可能なため、
+    /// `maxInteractiveCalls` を `0` に設定します。
+    public var forBackground: AgentConfiguration {
+        AgentConfiguration(
+            maxSteps: maxSteps,
+            softMaxSteps: softMaxSteps,
+            autoExecuteTools: autoExecuteTools,
+            maxDuplicateToolCalls: maxDuplicateToolCalls,
+            maxToolCallsPerTool: maxToolCallsPerTool,
+            maxInteractiveCalls: 0,
+            thinkingMode: thinkingMode,
+            skipFinalOutput: skipFinalOutput
+        )
+    }
 }
 
 // MARK: - AgentError

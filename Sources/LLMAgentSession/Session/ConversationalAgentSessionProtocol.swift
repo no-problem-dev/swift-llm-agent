@@ -100,4 +100,22 @@ public protocol ConversationalAgentSessionProtocol<Client>: Actor {
         turn: TurnConfiguration,
         outputType: Output.Type
     ) -> AsyncThrowingStream<SessionPhase<Output>, Error>
+
+    /// プリフィルメッセージを注入してエージェントループを実行
+    ///
+    /// 合成メッセージ（ツール呼び出し完了済み状態など）を会話履歴に直接注入し、
+    /// ユーザーメッセージを表示せずにエージェントループを開始する。
+    ///
+    /// - Parameters:
+    ///   - prefill: 注入するメッセージ配列
+    ///   - model: 使用するモデル
+    ///   - turn: このターンの設定
+    ///   - outputType: 期待する出力の型
+    /// - Returns: 各フェーズを返す `AsyncThrowingStream`
+    nonisolated func runWithPrefill<Output: StructuredProtocol>(
+        prefill: [LLMMessage],
+        model: Client.Model,
+        turn: TurnConfiguration,
+        outputType: Output.Type
+    ) -> AsyncThrowingStream<SessionPhase<Output>, Error>
 }

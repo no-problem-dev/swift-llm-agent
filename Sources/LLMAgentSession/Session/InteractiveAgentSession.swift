@@ -80,6 +80,11 @@ public actor InteractiveAgentSession<Client: AgentCapableClient>: ChatSessionPro
         return wrapWithDirective(innerStream)
     }
 
+    public func sendWithPrefill(_ prefill: [LLMMessage]) async -> AsyncThrowingStream<SessionPhaseEvent, Error> {
+        let innerStream = await inner.sendWithPrefill(prefill)
+        return wrapWithDirective(innerStream)
+    }
+
     public func resume() async -> AsyncThrowingStream<SessionPhaseEvent, Error> {
         let innerStream = await inner.resume()
         return wrapWithDirective(innerStream)

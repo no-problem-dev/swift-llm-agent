@@ -1,4 +1,5 @@
 import Foundation
+import LLMClient
 
 // MARK: - ChatSessionProtocol
 
@@ -34,6 +35,9 @@ public protocol ChatSessionProtocol: Sendable {
 
     /// メッセージを送信してフェーズイベントのストリームを返す
     func send(_ text: String) async -> AsyncThrowingStream<SessionPhaseEvent, Error>
+
+    /// プリフィルメッセージを注入してフェーズイベントのストリームを返す
+    func sendWithPrefill(_ prefill: [LLMMessage]) async -> AsyncThrowingStream<SessionPhaseEvent, Error>
 
     /// 一時停止/エラーから再開
     func resume() async -> AsyncThrowingStream<SessionPhaseEvent, Error>

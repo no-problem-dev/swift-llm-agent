@@ -120,6 +120,11 @@ public enum SkillLoader {
         // 許可ツール
         let allowedTools = frontmatter["allowed-tools"] as? [String]
 
+        // fork スキルには allowed-tools を必須化
+        if executionMode == .fork && allowedTools == nil {
+            throw SkillError.missingAllowedToolsForFork(name)
+        }
+
         // 呼び出し制御
         let isUserInvocable = frontmatter["user-invocable"] as? Bool ?? true
         let disableModel = frontmatter["disable-model-invocation"] as? Bool ?? false
@@ -149,6 +154,23 @@ public enum SkillLoader {
             configuration = AgentConfiguration(maxSteps: maxSteps)
         }
 
+        // モデルティア
+        let modelTier: ModelTier
+        if let tierValue = frontmatter["model-tier"] as? String {
+            if let tierInt = Int(tierValue), let tier = ModelTier(rawValue: tierInt) {
+                modelTier = tier
+            } else {
+                switch tierValue.lowercased() {
+                case "light": modelTier = .light
+                case "standard": modelTier = .standard
+                case "powerful": modelTier = .powerful
+                default: throw SkillError.invalidModelTier(tierValue)
+                }
+            }
+        } else {
+            modelTier = .standard
+        }
+
         // 本文（instructions）
         let instructions = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !instructions.isEmpty else {
@@ -165,7 +187,8 @@ public enum SkillLoader {
             isUserInvocable: isUserInvocable,
             isModelInvocable: !disableModel,
             argumentHint: argumentHint,
-            metadata: metadata
+            metadata: metadata,
+            modelTier: modelTier
         )
     }
 }

@@ -68,6 +68,13 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
             Client.Model,
             TurnConfiguration
         ) -> AsyncThrowingStream<SessionPhaseEvent, Error>
+
+        let runWithPrefill: (
+            ConversationalAgentSession<Client>,
+            [LLMMessage],
+            Client.Model,
+            TurnConfiguration
+        ) -> AsyncThrowingStream<SessionPhaseEvent, Error>
     }
 
     // MARK: - Properties
@@ -150,6 +157,15 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
         }
         let config = turnConfig_
         return runner.run(session, LLMInput(text), model, config)
+    }
+
+    public func sendWithPrefill(_ prefill: [LLMMessage]) -> AsyncThrowingStream<SessionPhaseEvent, Error> {
+        guard let model = modelRegistry[currentModelId_],
+              let runner = outputRunnerRegistry[currentOutputTypeId_] else {
+            return AsyncThrowingStream { $0.finish(throwing: ChatSessionError.configurationMissing) }
+        }
+        let config = turnConfig_
+        return runner.runWithPrefill(session, prefill, model, config)
     }
 
     public func resume() -> AsyncThrowingStream<SessionPhaseEvent, Error> {
@@ -244,6 +260,15 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
             },
             resume: { session, model, turnConfig in
                 let typedStream = session.resume(
+                    model: model,
+                    turn: turnConfig,
+                    outputType: Output.self
+                )
+                return Self.mapToEvents(typedStream, renderOutput: renderOutput)
+            },
+            runWithPrefill: { session, prefill, model, turnConfig in
+                let typedStream = session.runWithPrefill(
+                    prefill: prefill,
                     model: model,
                     turn: turnConfig,
                     outputType: Output.self

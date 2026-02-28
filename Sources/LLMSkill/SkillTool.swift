@@ -39,7 +39,7 @@ public struct SkillTool<Client: AgentCapableClient>: Tool
     where Client.Model: Sendable
 {
     private let client: Client
-    private let model: Client.Model
+    private let modelResolver: ModelTierResolver<Client.Model>
     private let registry: any SkillRegistry
     private let toolPool: ToolSet
     private let timeout: Duration?
@@ -52,7 +52,7 @@ public struct SkillTool<Client: AgentCapableClient>: Tool
     ///
     /// - Parameters:
     ///   - client: LLM クライアント（fork モードで使用）
-    ///   - model: サブエージェントが使用するモデル（fork モードで使用）
+    ///   - modelResolver: モデルティアを具体的なモデルに解決するクロージャ（fork モードで使用）
     ///   - registry: スキルレジストリ
     ///   - toolPool: サブエージェントに提供可能なツールプール（allowedTools フィルタの対象）
     ///   - timeout: fork 実行のタイムアウト
@@ -60,7 +60,7 @@ public struct SkillTool<Client: AgentCapableClient>: Tool
     ///   - backgroundTaskRegistry: バックグラウンドタスクレジストリ（nil の場合バックグラウンド実行無効）
     public init(
         client: Client,
-        model: Client.Model,
+        modelResolver: @escaping ModelTierResolver<Client.Model>,
         registry: any SkillRegistry,
         toolPool: ToolSet = ToolSet(),
         timeout: Duration? = nil,
@@ -68,7 +68,7 @@ public struct SkillTool<Client: AgentCapableClient>: Tool
         backgroundTaskRegistry: BackgroundTaskRegistry? = nil
     ) {
         self.client = client
-        self.model = model
+        self.modelResolver = modelResolver
         self.registry = registry
         self.toolPool = toolPool
         self.timeout = timeout
@@ -222,6 +222,8 @@ public struct SkillTool<Client: AgentCapableClient>: Tool
             .started(taskId: taskId, agentType: "skill:\(skill.name)", description: argument)
         )
 
+        let model = modelResolver(skill.modelTier)
+
         do {
             let result = try await SubAgentRunner.run(
                 client: client,
@@ -257,17 +259,18 @@ public struct SkillTool<Client: AgentCapableClient>: Tool
 
         let resolvedTools = resolveTools(for: skill)
         let resolvedPrompt = resolveSystemPrompt(for: skill)
-        let config = skill.configuration
+        let backgroundConfig = skill.configuration.forBackground
+        let model = modelResolver(skill.modelTier)
 
         let taskHandle = Task<Void, Never> {
             do {
                 let result = try await SubAgentRunner.run(
                     client: self.client,
-                    model: self.model,
+                    model: model,
                     prompt: argument,
                     tools: resolvedTools,
                     systemPrompt: resolvedPrompt,
-                    configuration: config,
+                    configuration: backgroundConfig,
                     timeout: self.timeout,
                     taskId: taskId,
                     eventHandler: self.eventHandler

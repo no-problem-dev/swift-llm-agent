@@ -95,6 +95,9 @@ public protocol AgentSkill: Sendable {
 
     /// 補足メタデータ
     var metadata: SkillMetadata? { get }
+
+    /// fork モードのサブエージェントが使用するモデルティア
+    var modelTier: ModelTier { get }
 }
 
 // MARK: - Default Implementations
@@ -108,6 +111,7 @@ extension AgentSkill {
     public var isModelInvocable: Bool { true }
     public var argumentHint: String? { nil }
     public var metadata: SkillMetadata? { nil }
+    public var modelTier: ModelTier { .standard }
 }
 
 // MARK: - AgentSkillDefinition
@@ -140,6 +144,7 @@ public struct AgentSkillDefinition: AgentSkill {
     public let isModelInvocable: Bool
     public let argumentHint: String?
     public let metadata: SkillMetadata?
+    public let modelTier: ModelTier
 
     public init(
         name: String,
@@ -153,7 +158,8 @@ public struct AgentSkillDefinition: AgentSkill {
         isUserInvocable: Bool = true,
         isModelInvocable: Bool = true,
         argumentHint: String? = nil,
-        metadata: SkillMetadata? = nil
+        metadata: SkillMetadata? = nil,
+        modelTier: ModelTier = .standard
     ) {
         self.name = name
         self.description = description
@@ -167,5 +173,6 @@ public struct AgentSkillDefinition: AgentSkill {
         self.isModelInvocable = isModelInvocable
         self.argumentHint = argumentHint
         self.metadata = metadata
+        self.modelTier = modelTier
     }
 }

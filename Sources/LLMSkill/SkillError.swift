@@ -16,6 +16,12 @@ public enum SkillError: Error, Sendable {
     /// 無効な実行モード
     case invalidExecutionMode(String)
 
+    /// 無効なモデルティア値
+    case invalidModelTier(String)
+
+    /// fork スキルに allowed-tools が指定されていない
+    case missingAllowedToolsForFork(String)
+
     /// ファイル読み込みエラー
     case fileLoadError(URL, any Error)
 }
@@ -33,6 +39,10 @@ extension SkillError: LocalizedError {
             "Missing required field in SKILL.md: \(field)"
         case .invalidExecutionMode(let mode):
             "Invalid execution mode: \"\(mode)\". Use \"inline\" or \"fork\""
+        case .invalidModelTier(let value):
+            "Invalid model-tier: \"\(value)\". Use 1/2/3 or light/standard/powerful"
+        case .missingAllowedToolsForFork(let name):
+            "Fork-mode skill \"\(name)\" must specify allowed-tools for tool permission isolation"
         case .fileLoadError(let url, let error):
             "Failed to load \(url.lastPathComponent): \(error.localizedDescription)"
         }

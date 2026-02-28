@@ -36,6 +36,9 @@ public protocol SubAgentType: Sendable {
 
     /// エージェント設定
     var configuration: AgentConfiguration { get }
+
+    /// モデルの強度ティア
+    var modelTier: ModelTier { get }
 }
 
 // MARK: - Default Implementation
@@ -46,6 +49,9 @@ extension SubAgentType {
 
     /// デフォルトのエージェント設定
     public var configuration: AgentConfiguration { .default }
+
+    /// デフォルトのモデルティア（standard）
+    public var modelTier: ModelTier { .standard }
 }
 
 // MARK: - SubAgentTypeDefinition
@@ -71,6 +77,7 @@ public struct SubAgentTypeDefinition: SubAgentType {
     public let tools: ToolSet
     public let systemPrompt: SystemPrompt?
     public let configuration: AgentConfiguration
+    public let modelTier: ModelTier
 
     /// SubAgentTypeDefinition を初期化
     ///
@@ -80,17 +87,20 @@ public struct SubAgentTypeDefinition: SubAgentType {
     ///   - tools: 使用可能ツール
     ///   - systemPrompt: システムプロンプト（オプション）
     ///   - configuration: エージェント設定
+    ///   - modelTier: モデルの強度ティア
     public init(
         name: String,
         description: String,
         tools: ToolSet = ToolSet {},
         systemPrompt: SystemPrompt? = nil,
-        configuration: AgentConfiguration = .default
+        configuration: AgentConfiguration = .default,
+        modelTier: ModelTier = .standard
     ) {
         self.name = name
         self.description = description
         self.tools = tools
         self.systemPrompt = systemPrompt
         self.configuration = configuration
+        self.modelTier = modelTier
     }
 }

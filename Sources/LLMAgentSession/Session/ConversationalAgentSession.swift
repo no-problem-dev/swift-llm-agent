@@ -197,7 +197,45 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         }
     }
 
+    // MARK: - Prefill API
+
+    nonisolated public func runWithPrefill<Output: StructuredProtocol>(
+        prefill: [LLMMessage],
+        model: Client.Model,
+        turn: TurnConfiguration,
+        outputType: Output.Type = Output.self
+    ) -> AsyncThrowingStream<SessionPhase<Output>, Error> {
+        makeCancellableStream { continuation in
+            Task {
+                await self.executePrefillLoop(
+                    prefill: prefill,
+                    model: model,
+                    turn: turn,
+                    outputType: Output.self,
+                    continuation: continuation
+                )
+            }
+        }
+    }
+
     // MARK: - Internal Loop
+
+    private func executePrefillLoop<Output: StructuredProtocol>(
+        prefill: [LLMMessage],
+        model: Client.Model,
+        turn: TurnConfiguration,
+        outputType: Output.Type,
+        continuation: AsyncThrowingStream<SessionPhase<Output>, Error>.Continuation
+    ) async {
+        guard status.canRun else {
+            continuation.finish(throwing: ConversationalAgentError.sessionAlreadyRunning)
+            return
+        }
+        messages.append(contentsOf: prefill)
+        status = .running
+        // .userMessage は yield しない（UI にユーザーメッセージを表示しないため）
+        await runAgentLoop(model: model, turn: turn, outputType: Output.self, continuation: continuation)
+    }
 
     private func executeResumeLoop<Output: StructuredProtocol>(
         model: Client.Model,
@@ -558,6 +596,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                 }
 
                                 pendingInteractiveCall = (tool: tool, call: call)
+
                                 status = .awaitingInteraction(request: request)
                                 continuation.yield(.awaitingInteraction(request: request))
 

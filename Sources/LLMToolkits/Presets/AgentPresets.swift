@@ -88,8 +88,7 @@ public enum ResearcherPreset: AgentPreset {
         softMaxSteps: 12,
         autoExecuteTools: true,
         maxDuplicateToolCalls: 1,
-        maxToolCallsPerTool: 8,
-        maxInteractiveCalls: 0
+        maxToolCallsPerTool: 8
     )
 }
 
@@ -129,8 +128,7 @@ public enum DataAnalystPreset: AgentPreset {
         softMaxSteps: 9,
         autoExecuteTools: true,
         maxDuplicateToolCalls: 3,
-        maxToolCallsPerTool: 10,
-        maxInteractiveCalls: 1
+        maxToolCallsPerTool: 10
     )
 }
 
@@ -169,8 +167,7 @@ public enum CodingAssistantPreset: AgentPreset {
         softMaxSteps: 8,
         autoExecuteTools: true,
         maxDuplicateToolCalls: 1,
-        maxToolCallsPerTool: 5,
-        maxInteractiveCalls: 2
+        maxToolCallsPerTool: 5
     )
 }
 
@@ -208,8 +205,7 @@ public enum WriterPreset: AgentPreset {
         softMaxSteps: 6,
         autoExecuteTools: true,
         maxDuplicateToolCalls: 1,
-        maxToolCallsPerTool: 4,
-        maxInteractiveCalls: 1
+        maxToolCallsPerTool: 4
     )
 }
 
@@ -248,8 +244,7 @@ public enum PlannerPreset: AgentPreset {
         softMaxSteps: 9,
         autoExecuteTools: true,
         maxDuplicateToolCalls: 1,
-        maxToolCallsPerTool: 6,
-        maxInteractiveCalls: 2
+        maxToolCallsPerTool: 6
     )
 }
 
