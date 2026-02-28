@@ -103,4 +103,31 @@ public struct SubAgentTypeDefinition: SubAgentType {
         self.configuration = configuration
         self.modelTier = modelTier
     }
+
+    /// ToolSetBuilder クロージャで初期化
+    ///
+    /// ```swift
+    /// let researcher = SubAgentTypeDefinition(
+    ///     name: "researcher",
+    ///     description: "Web search and information synthesis"
+    /// ) {
+    ///     WebSearchTool()
+    ///     FetchTool()
+    /// }
+    /// ```
+    public init(
+        name: String,
+        description: String,
+        systemPrompt: SystemPrompt? = nil,
+        configuration: AgentConfiguration = .default,
+        modelTier: ModelTier = .standard,
+        @ToolSetBuilder tools: () -> [any Tool]
+    ) {
+        self.name = name
+        self.description = description
+        self.tools = ToolSet(tools)
+        self.systemPrompt = systemPrompt
+        self.configuration = configuration
+        self.modelTier = modelTier
+    }
 }

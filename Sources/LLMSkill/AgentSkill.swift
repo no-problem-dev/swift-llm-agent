@@ -175,4 +175,47 @@ public struct AgentSkillDefinition: AgentSkill {
         self.metadata = metadata
         self.modelTier = modelTier
     }
+
+    /// ToolSetBuilder クロージャで初期化
+    ///
+    /// ```swift
+    /// let skill = AgentSkillDefinition(
+    ///     name: "code-review",
+    ///     description: "Reviews code for quality",
+    ///     executionMode: .fork,
+    ///     instructions: "Review the code..."
+    /// ) {
+    ///     ReadFileTool()
+    ///     SearchCodeTool()
+    /// }
+    /// ```
+    public init(
+        name: String,
+        description: String,
+        executionMode: SkillExecutionMode = .inline,
+        instructions: String,
+        allowedTools: [String]? = nil,
+        systemPrompt: SystemPrompt? = nil,
+        configuration: AgentConfiguration = .default,
+        isUserInvocable: Bool = true,
+        isModelInvocable: Bool = true,
+        argumentHint: String? = nil,
+        metadata: SkillMetadata? = nil,
+        modelTier: ModelTier = .standard,
+        @ToolSetBuilder tools: () -> [any Tool]
+    ) {
+        self.name = name
+        self.description = description
+        self.executionMode = executionMode
+        self.instructions = instructions
+        self.allowedTools = allowedTools
+        self.tools = ToolSet(tools)
+        self.systemPrompt = systemPrompt
+        self.configuration = configuration
+        self.isUserInvocable = isUserInvocable
+        self.isModelInvocable = isModelInvocable
+        self.argumentHint = argumentHint
+        self.metadata = metadata
+        self.modelTier = modelTier
+    }
 }
