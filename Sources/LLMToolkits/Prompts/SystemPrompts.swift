@@ -1,5 +1,6 @@
 import Foundation
 import LLMClient
+import LLMAgentSession
 
 // MARK: - SystemPrompts
 
@@ -362,11 +363,15 @@ public enum AgentBehaviors {
     /// 自律的行動の指示
     ///
     /// エージェントが不必要にユーザーに質問しないことを保証します。
+    /// インタラクティブツール（ask_user / ask_selection / ask_confirmation）が
+    /// 利用可能な場合は、テキスト応答ではなくツール経由で問い合わせることを指示します。
     public static let autonomy = PromptComponent.behavior(
-        "Act autonomously and make reasonable decisions on your own. Do NOT ask the user for " +
-        "clarification or confirmation unless the request is fundamentally ambiguous and cannot " +
-        "proceed without user input. When in doubt, proceed with your best judgment and explain " +
-        "your reasoning in the output."
+        "Act autonomously and make reasonable decisions on your own. " +
+        "Do NOT generate plain-text questions or option lists in your response. " +
+        "When you need user input, you MUST use the appropriate interaction tool " +
+        "(ask_user, ask_selection, or ask_confirmation) instead of writing questions " +
+        "or choices as text. When the task is clear and you can proceed without user input, " +
+        "proceed with your best judgment."
     )
 
     /// Web リサーチワークフローの指示
@@ -389,6 +394,13 @@ public enum AgentBehaviors {
         "and opinions/speculation, and provide a balanced view covering multiple perspectives. " +
         "If information is incomplete, explicitly state what could not be verified."
     )
+
+    /// インタラクティブツール使用ガイダンス
+    ///
+    /// `ask_user` / `ask_selection` / `ask_confirmation` が利用可能な場合に、
+    /// LLM が適切にユーザーとインタラクトするための行動指示。
+    /// `InteractiveToolConfiguration.defaultGuidance` を参照。
+    public static let interactiveGuidance = InteractiveToolConfiguration.defaultGuidance
 
     /// 統合エージェント行動指示
     ///

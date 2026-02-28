@@ -31,6 +31,11 @@ private enum FinalOutputConstants {
 /// **設定 = ターンごとのパラメータ**として分離しています。
 /// これにより、ターン間でモデル・ツール・システムプロンプト・出力型を自由に変更できます。
 ///
+/// ## InteractiveTool 対応
+///
+/// `InteractiveTool` に準拠したツールが検出されると、ランループは suspend し、
+/// `InteractionRequest` を UI に発行します。UI が `respond()` を呼ぶとランループが再開されます。
+///
 /// ## 使用例
 ///
 /// ```swift
@@ -39,29 +44,24 @@ private enum FinalOutputConstants {
 /// let turnConfig = TurnConfiguration(
 ///     systemPrompt: SystemPrompt { "リサーチアシスタントです。" },
 ///     tools: ToolSet { WebSearchTool() },
-///     interactiveMode: true
+///     interactiveTools: InteractiveToolConfiguration(
+///         priorityTools: [AskUserTool()]
+///     )
 /// )
 ///
-/// // 1st turn
 /// for try await phase in session.run(
 ///     input: "AIについて調査して",
 ///     model: .sonnet,
 ///     turn: turnConfig,
 ///     outputType: ResearchResult.self
 /// ) {
-///     // ...
-/// }
-///
-/// // 2nd turn - ツールを変更して再開
-/// var newConfig = turnConfig
-/// newConfig.tools = newConfig.tools.appending(CodeAnalysisTool())
-/// for try await phase in session.run(
-///     input: "コード例も分析して",
-///     model: .haiku,  // モデルも変更可能
-///     turn: newConfig,
-///     outputType: ResearchResult.self
-/// ) {
-///     // ...
+///     switch phase {
+///     case .awaitingInteraction(let request):
+///         // UI でインタラクションを表示
+///     case .completed(let output):
+///         print(output)
+///     default: break
+///     }
 /// }
 /// ```
 public actor ConversationalAgentSession<Client: AgentCapableClient>: ConversationalAgentSessionProtocol
@@ -76,10 +76,10 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
     /// 現在のセッション状態
     public private(set) var status: SessionStatus = .idle
 
-    /// 保留中の ask_user ツール呼び出し
-    private var pendingAskUserCall: ToolCall?
-    private var answerContinuation: CheckedContinuation<String, Never>?
-    private var askUserCallCount: Int = 0
+    /// 保留中の InteractiveTool 呼び出し
+    private var pendingInteractiveCall: (tool: any InteractiveTool, call: ToolCall)?
+    private var responseContinuation: CheckedContinuation<InteractionResponse, Never>?
+    private var interactiveCallCount: Int = 0
 
     // MARK: - Initialization
 
@@ -134,24 +134,27 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         guard status.canCancel else { return }
         status = .paused
         interruptQueue.removeAll()
-        pendingAskUserCall = nil
+        pendingInteractiveCall = nil
 
-        if let continuation = answerContinuation {
-            answerContinuation = nil
-            continuation.resume(returning: "")
+        if let continuation = responseContinuation {
+            responseContinuation = nil
+            continuation.resume(returning: InteractionResponse(
+                requestId: "",
+                content: .dismissed
+            ))
         }
     }
 
     // MARK: - Protocol Conformance: User Interaction API
 
-    public var waitingForAnswer: Bool {
-        status.canReply
+    public var waitingForResponse: Bool {
+        status.canRespond
     }
 
-    public func reply(_ answer: String) {
-        guard status.canReply, let continuation = answerContinuation else { return }
-        answerContinuation = nil
-        continuation.resume(returning: answer)
+    public func respond(_ response: InteractionResponse) {
+        guard status.canRespond, let continuation = responseContinuation else { return }
+        responseContinuation = nil
+        continuation.resume(returning: response)
     }
 
     // MARK: - Protocol Conformance: Core API
@@ -296,8 +299,24 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         continuation: AsyncThrowingStream<SessionPhase<Output>, Error>.Continuation
     ) async {
         // TurnConfiguration からローカル変数に展開
-        let tools = turn.interactiveMode ? turn.tools.appending(AskUserTool()) : turn.tools
-        let systemPrompt = turn.systemPrompt
+        var tools = turn.tools
+        var effectiveSystemPrompt = turn.systemPrompt
+        if let interactiveConfig = turn.interactiveTools {
+            for tool in interactiveConfig.priorityTools {
+                tools = tools.appending(tool)
+            }
+            #if DEBUG
+            let toolNames = interactiveConfig.priorityTools.map { $0.toolName }
+            print("[InteractiveTools] Injected \(toolNames.count) tools: \(toolNames.joined(separator: ", "))")
+            #endif
+            // インタラクティブツールが利用可能な場合、ガイダンスを自動追加
+            if let base = effectiveSystemPrompt {
+                effectiveSystemPrompt = base.appending(InteractiveToolConfiguration.defaultGuidance)
+            } else {
+                effectiveSystemPrompt = SystemPrompt { InteractiveToolConfiguration.defaultGuidance }
+            }
+        }
+        let systemPrompt = effectiveSystemPrompt
         let configuration = turn.agentConfiguration
 
         var step = 0
@@ -439,17 +458,16 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
 
                     // ツール呼び出しがある場合
                     if configuration.autoExecuteTools {
-                        var askUserCall: ToolCall?
-                        var askUserQuestion: String?
+                        var interactiveCall: (tool: any InteractiveTool, call: ToolCall)?
                         var regularCalls: [ToolCall] = []
 
                         for call in toolCalls {
                             continuation.yield(.running(step: .toolCall(call)))
-                            if call.name == "ask_user" {
-                                let question = extractQuestion(from: call)
-                                askUserCall = call
-                                askUserQuestion = question
-                                continuation.yield(.running(step: .askingUser(question)))
+                            if let tool = tools.tool(named: call.name) as? any InteractiveTool {
+                                #if DEBUG
+                                print("[InteractiveTools] Detected interactive tool call: \(call.name) (type: \(tool.interactionType))")
+                                #endif
+                                interactiveCall = (tool: tool, call: call)
                             } else {
                                 regularCalls.append(call)
                             }
@@ -500,26 +518,41 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                             addToolResults(toolResults)
                         }
 
-                        // ask_user 処理
-                        if let call = askUserCall, let question = askUserQuestion {
-                            askUserCallCount += 1
+                        // InteractiveTool 処理
+                        if let (tool, call) = interactiveCall {
+                            interactiveCallCount += 1
 
-                            if let maxCalls = configuration.maxAskUserCalls, askUserCallCount > maxCalls {
-                                let syntheticAnswer = "Proceed with your best judgment."
+                            if let maxCalls = configuration.maxInteractiveCalls, interactiveCallCount > maxCalls {
+                                let syntheticResult = ToolResult.text("Proceed with your best judgment.")
                                 let result = ToolResponse(
                                     callId: call.id, name: call.name,
-                                    output: syntheticAnswer, isError: false
+                                    output: syntheticResult.stringValue, isError: false
                                 )
                                 addToolResults([result])
                                 continuation.yield(.running(step: .toolResult(result)))
-                                pendingAskUserCall = nil
+                                pendingInteractiveCall = nil
                             } else {
-                                pendingAskUserCall = call
-                                status = .awaitingUserInput(question: question)
-                                continuation.yield(.awaitingUserInput(question: question))
+                                let request: InteractionRequest
+                                do {
+                                    request = try tool.makeInteractionRequest(from: call.arguments)
+                                } catch {
+                                    let result = ToolResponse(
+                                        callId: call.id, name: call.name,
+                                        output: "Error creating interaction request: \(error.localizedDescription)",
+                                        isError: true
+                                    )
+                                    addToolResults([result])
+                                    continuation.yield(.running(step: .toolResult(result)))
+                                    pendingInteractiveCall = nil
+                                    continue
+                                }
 
-                                let answer = await withCheckedContinuation { cont in
-                                    self.answerContinuation = cont
+                                pendingInteractiveCall = (tool: tool, call: call)
+                                status = .awaitingInteraction(request: request)
+                                continuation.yield(.awaitingInteraction(request: request))
+
+                                let response = await withCheckedContinuation { cont in
+                                    self.responseContinuation = cont
                                 }
 
                                 guard status != .paused else {
@@ -529,16 +562,15 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                 }
 
                                 status = .running
-                                continuation.yield(.running(step: .userMessage(answer)))
 
-                                let result = ToolResponse(
+                                let toolResult = tool.makeToolResult(from: response)
+                                let toolResponse = ToolResponse(
                                     callId: call.id, name: call.name,
-                                    output: answer.isEmpty ? "No answer provided" : answer,
-                                    isError: false
+                                    output: toolResult.stringValue, isError: toolResult.isError
                                 )
-                                addToolResults([result])
-                                continuation.yield(.running(step: .toolResult(result)))
-                                pendingAskUserCall = nil
+                                addToolResults([toolResponse])
+                                continuation.yield(.running(step: .toolResult(toolResponse)))
+                                pendingInteractiveCall = nil
                             }
                         }
                     } else {
@@ -697,14 +729,6 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
             if case .text(let value) = block { return value }
             return nil
         }.joined()
-    }
-
-    private func extractQuestion(from call: ToolCall) -> String {
-        if let dict = try? JSONSerialization.jsonObject(with: call.arguments) as? [String: Any],
-           let question = dict["question"] as? String {
-            return question
-        }
-        return "Please provide additional information."
     }
 
     private func addFinalOutputRequest() {

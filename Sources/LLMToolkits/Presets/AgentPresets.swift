@@ -89,7 +89,7 @@ public enum ResearcherPreset: AgentPreset {
         autoExecuteTools: true,
         maxDuplicateToolCalls: 1,
         maxToolCallsPerTool: 8,
-        maxAskUserCalls: 0
+        maxInteractiveCalls: 0
     )
 }
 
@@ -130,7 +130,7 @@ public enum DataAnalystPreset: AgentPreset {
         autoExecuteTools: true,
         maxDuplicateToolCalls: 3,
         maxToolCallsPerTool: 10,
-        maxAskUserCalls: 1
+        maxInteractiveCalls: 1
     )
 }
 
@@ -170,7 +170,7 @@ public enum CodingAssistantPreset: AgentPreset {
         autoExecuteTools: true,
         maxDuplicateToolCalls: 1,
         maxToolCallsPerTool: 5,
-        maxAskUserCalls: 2
+        maxInteractiveCalls: 2
     )
 }
 
@@ -209,7 +209,7 @@ public enum WriterPreset: AgentPreset {
         autoExecuteTools: true,
         maxDuplicateToolCalls: 1,
         maxToolCallsPerTool: 4,
-        maxAskUserCalls: 1
+        maxInteractiveCalls: 1
     )
 }
 
@@ -249,7 +249,7 @@ public enum PlannerPreset: AgentPreset {
         autoExecuteTools: true,
         maxDuplicateToolCalls: 1,
         maxToolCallsPerTool: 6,
-        maxAskUserCalls: 2
+        maxInteractiveCalls: 2
     )
 }
 
@@ -380,7 +380,7 @@ public struct CustomPresetBuilder: Sendable {
         autoExecuteTools: Bool? = nil,
         maxDuplicateToolCalls: Int? = nil,
         maxToolCallsPerTool: Int? = nil,
-        maxAskUserCalls: Int? = nil
+        maxInteractiveCalls: Int? = nil
     ) -> CustomPresetBuilder {
         var builder = self
         builder.configuration = AgentConfiguration(
@@ -389,7 +389,7 @@ public struct CustomPresetBuilder: Sendable {
             autoExecuteTools: autoExecuteTools ?? configuration.autoExecuteTools,
             maxDuplicateToolCalls: maxDuplicateToolCalls ?? configuration.maxDuplicateToolCalls,
             maxToolCallsPerTool: maxToolCallsPerTool ?? configuration.maxToolCallsPerTool,
-            maxAskUserCalls: maxAskUserCalls ?? configuration.maxAskUserCalls
+            maxInteractiveCalls: maxInteractiveCalls ?? configuration.maxInteractiveCalls
         )
         return builder
     }

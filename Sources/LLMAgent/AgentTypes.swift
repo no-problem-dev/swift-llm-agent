@@ -73,13 +73,13 @@ public struct AgentConfiguration: Sendable {
     /// - Note: `nil` の場合は制限なし（maxSteps でのみ制限）
     public let maxToolCallsPerTool: Int?
 
-    /// ask_user ツールの最大呼び出し回数
+    /// インタラクティブツールの最大呼び出し回数
     ///
-    /// エージェントがユーザーに質問する回数を制限します。
+    /// エージェントが InteractiveTool でユーザーにインタラクションを要求する回数を制限します。
     /// - `nil`: 無制限（デフォルト）
-    /// - `0`: ask_user を禁止（自律的に判断）
+    /// - `0`: インタラクションを禁止（自律的に判断）
     /// - 正の値: 指定回数まで許可
-    public let maxAskUserCalls: Int?
+    public let maxInteractiveCalls: Int?
 
     /// Extended Thinking のモード
     ///
@@ -109,7 +109,7 @@ public struct AgentConfiguration: Sendable {
         autoExecuteTools: Bool = true,
         maxDuplicateToolCalls: Int = 1,
         maxToolCallsPerTool: Int? = 5,
-        maxAskUserCalls: Int? = nil,
+        maxInteractiveCalls: Int? = nil,
         thinkingMode: ThinkingMode = .disabled,
         skipFinalOutput: Bool = false
     ) {
@@ -118,7 +118,7 @@ public struct AgentConfiguration: Sendable {
         self.autoExecuteTools = autoExecuteTools
         self.maxDuplicateToolCalls = maxDuplicateToolCalls
         self.maxToolCallsPerTool = maxToolCallsPerTool
-        self.maxAskUserCalls = maxAskUserCalls
+        self.maxInteractiveCalls = maxInteractiveCalls
         self.thinkingMode = thinkingMode
         self.skipFinalOutput = skipFinalOutput
     }

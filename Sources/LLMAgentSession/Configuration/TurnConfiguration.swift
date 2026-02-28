@@ -21,7 +21,9 @@ import LLMAgent
 ///     systemPrompt: SystemPrompt { "リサーチアシスタントです。" },
 ///     tools: ToolSet { WebSearchTool() },
 ///     agentConfiguration: .default,
-///     interactiveMode: true
+///     interactiveTools: InteractiveToolConfiguration(
+///         priorityTools: [AskUserTool()]
+///     )
 /// )
 ///
 /// // ターン間でツールを追加
@@ -45,21 +47,22 @@ public struct TurnConfiguration: Sendable {
     /// `maxSteps`, `thinkingMode`, `skipFinalOutput` などを含みます。
     public var agentConfiguration: AgentConfiguration
 
-    /// 対話モードを有効にするか
+    /// インタラクティブツール設定
     ///
-    /// `true` の場合、`ask_user` ツールが自動的に追加され、
-    /// AI がユーザーに質問できるようになります。
-    public var interactiveMode: Bool
+    /// 設定されている場合、`priorityTools` が自動的にツールセットに追加され、
+    /// AI がユーザーにインタラクションを要求できるようになります。
+    /// `nil` の場合、インタラクティブモードは無効です。
+    public var interactiveTools: InteractiveToolConfiguration?
 
     public init(
         systemPrompt: SystemPrompt? = nil,
         tools: ToolSet = ToolSet {},
         agentConfiguration: AgentConfiguration = .default,
-        interactiveMode: Bool = false
+        interactiveTools: InteractiveToolConfiguration? = nil
     ) {
         self.systemPrompt = systemPrompt
         self.tools = tools
         self.agentConfiguration = agentConfiguration
-        self.interactiveMode = interactiveMode
+        self.interactiveTools = interactiveTools
     }
 }

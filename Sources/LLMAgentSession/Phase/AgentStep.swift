@@ -30,9 +30,9 @@ import LLMTool
 ///             print("📄 \(result.output)")
 ///         case .interrupted(let msg):
 ///             print("⚡ 割り込み: \(msg)")
-///         case .askingUser(let question):
-///             print("❓ \(question)")
 ///         }
+///     case .awaitingInteraction(let request):
+///         print("❓ \(request.prompt)")
 ///     case .completed(let result):
 ///         print("✅ 完了: \(result)")
 ///     // ...
@@ -69,12 +69,6 @@ public enum AgentStep: Sendable, Equatable {
     ///
     /// ユーザーからの割り込みメッセージが会話履歴に追加されたことを示します。
     case interrupted(String)
-
-    /// ユーザーへの質問を準備中
-    ///
-    /// インタラクティブモードでユーザーへの質問が準備されたことを示します。
-    /// この後すぐに `SessionPhase.awaitingUserInput` に遷移します。
-    case askingUser(String)
 }
 
 // MARK: - CustomStringConvertible
@@ -94,8 +88,6 @@ extension AgentStep: CustomStringConvertible {
             return "toolResult(\(result.name))"
         case .interrupted(let msg):
             return "interrupted(\(msg.prefix(30))...)"
-        case .askingUser(let question):
-            return "askingUser(\(question.prefix(30))...)"
         }
     }
 }

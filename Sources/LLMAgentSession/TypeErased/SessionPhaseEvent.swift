@@ -26,17 +26,21 @@ public enum SessionPhaseEvent: Sendable {
     /// 割り込みメッセージ
     case interrupted(String)
 
-    /// エージェントがユーザーに質問中
-    case askingUser(String)
-
-    /// ユーザー入力待ち
-    case awaitingUserInput(question: String)
+    /// インタラクション待ち（Layer 1: InteractiveTool 起因）
+    ///
+    /// `ask_user` を含む全てのインタラクティブツールがこのイベントを使用する。
+    case awaitingInteraction(request: InteractionRequest)
 
     /// 一時停止
     case paused
 
     /// 完了
     case completed(result: StructuredResult)
+
+    /// ディレクティブ付き完了（Layer 2: DirectiveGenerator 起因）
+    ///
+    /// セッション完了後に DirectiveGenerator が次のインタラクション提案を生成した場合に使用する。
+    case directive(result: StructuredResult, request: InteractionRequest)
 
     /// 失敗
     case failed(error: String)

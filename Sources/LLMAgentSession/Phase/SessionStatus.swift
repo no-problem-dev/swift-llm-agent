@@ -17,9 +17,9 @@ import Foundation
 ///    │                        │
 ///    │                        ├── cancel() ──────→ paused
 ///    │                        │
-///    │                        ├── ask_user ─────→ awaitingUserInput
+///    │                        ├── InteractiveTool → awaitingInteraction
 ///    │                        │                         │
-///    │                        │                         ├── reply() → running
+///    │                        │                         ├── respond() → running
 ///    │                        │                         └── cancel() → paused
 ///    │                        │
 ///    │                        ├── 正常完了 ─────→ idle
@@ -45,10 +45,10 @@ public enum SessionStatus: Sendable, Equatable {
     /// 許可される操作: `interrupt()`, `cancel()`
     case running
 
-    /// ユーザーの回答待ち（インタラクティブモード）
+    /// インタラクション待ち（InteractiveTool 起因）
     ///
-    /// 許可される操作: `reply()`, `cancel()`
-    case awaitingUserInput(question: String)
+    /// 許可される操作: `respond()`, `cancel()`
+    case awaitingInteraction(request: InteractionRequest)
 
     /// 一時停止（cancel後、再開可能）
     ///
@@ -66,10 +66,10 @@ public enum SessionStatus: Sendable, Equatable {
 extension SessionStatus {
     /// セッションが実行中かどうか
     ///
-    /// `running` または `awaitingUserInput` の場合に `true`
+    /// `running` または `awaitingInteraction` の場合に `true`
     public var isActive: Bool {
         switch self {
-        case .running, .awaitingUserInput:
+        case .running, .awaitingInteraction:
             return true
         default:
             return false
@@ -113,9 +113,9 @@ extension SessionStatus {
         return false
     }
 
-    /// `reply()` が呼び出し可能かどうか
-    public var canReply: Bool {
-        if case .awaitingUserInput = self {
+    /// `respond()` が呼び出し可能かどうか
+    public var canRespond: Bool {
+        if case .awaitingInteraction = self {
             return true
         }
         return false
@@ -124,7 +124,7 @@ extension SessionStatus {
     /// `cancel()` が呼び出し可能かどうか
     public var canCancel: Bool {
         switch self {
-        case .running, .awaitingUserInput:
+        case .running, .awaitingInteraction:
             return true
         default:
             return false
@@ -141,10 +141,10 @@ extension SessionStatus {
         }
     }
 
-    /// 質問文字列（awaitingUserInput の場合のみ）
-    public var question: String? {
-        if case .awaitingUserInput(let question) = self {
-            return question
+    /// インタラクション要求（awaitingInteraction の場合のみ）
+    public var interactionRequest: InteractionRequest? {
+        if case .awaitingInteraction(let request) = self {
+            return request
         }
         return nil
     }
@@ -167,9 +167,9 @@ extension SessionStatus: CustomStringConvertible {
             return "idle"
         case .running:
             return "running"
-        case .awaitingUserInput(let question):
-            let truncated = question.prefix(30)
-            return "awaitingUserInput(\(truncated)\(question.count > 30 ? "..." : ""))"
+        case .awaitingInteraction(let request):
+            let truncated = request.prompt.prefix(30)
+            return "awaitingInteraction(\(truncated)\(request.prompt.count > 30 ? "..." : ""))"
         case .paused:
             return "paused"
         case .failed(let error):

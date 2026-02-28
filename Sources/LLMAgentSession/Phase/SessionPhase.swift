@@ -20,27 +20,17 @@ import LLMClient
 /// ## 使用例
 ///
 /// ```swift
-/// @Structured("調査結果")
-/// struct ResearchResult {
-///     @StructuredField("要約")
-///     var summary: String
-/// }
-///
 /// for try await phase in session.run("調査して", model: .sonnet, outputType: ResearchResult.self) {
 ///     switch phase {
 ///     case .idle:
 ///         // 待機状態
 ///     case .running(let step):
 ///         // ステップに応じた UI 更新
-///         switch step {
-///         case .thinking:
-///             showProgressIndicator()
-///         case .toolCall(let call):
-///             showToolExecution(call)
-///         // ...
+///     case .awaitingInteraction(let request):
+///         // インタラクション UI を表示
+///         InteractionView(request: request) { response in
+///             await session.respond(response)
 ///         }
-///     case .awaitingUserInput(let question):
-///         // 質問を表示して回答入力フィールドを表示
 ///     case .paused:
 ///         // 「再開」ボタンを表示
 ///     case .completed(let output):
@@ -60,8 +50,11 @@ public enum SessionPhase<Output: StructuredProtocol>: Sendable {
     /// - Parameter step: 現在実行中のステップ
     case running(step: AgentStep)
 
-    /// ユーザーの回答待ち（インタラクティブモード）
-    case awaitingUserInput(question: String)
+    /// インタラクション待ち
+    ///
+    /// InteractiveTool が検出され、ユーザーの応答を待機中。
+    /// `respond()` で応答するとランループが再開される。
+    case awaitingInteraction(request: InteractionRequest)
 
     /// 一時停止（cancel後、再開可能）
     case paused
@@ -90,10 +83,10 @@ extension SessionPhase: Equatable where Output: Equatable {}
 extension SessionPhase {
     /// セッションが実行中かどうか
     ///
-    /// `running` または `awaitingUserInput` の場合に `true`
+    /// `running` または `awaitingInteraction` の場合に `true`
     public var isActive: Bool {
         switch self {
-        case .running, .awaitingUserInput:
+        case .running, .awaitingInteraction:
             return true
         default:
             return false
@@ -116,10 +109,10 @@ extension SessionPhase {
         return nil
     }
 
-    /// 質問文字列（awaitingUserInput の場合のみ）
-    public var question: String? {
-        if case .awaitingUserInput(let question) = self {
-            return question
+    /// インタラクション要求（awaitingInteraction の場合のみ）
+    public var interactionRequest: InteractionRequest? {
+        if case .awaitingInteraction(let request) = self {
+            return request
         }
         return nil
     }
@@ -158,9 +151,9 @@ extension SessionPhase: CustomStringConvertible {
             return "idle"
         case .running(let step):
             return "running(\(step))"
-        case .awaitingUserInput(let question):
-            let truncated = question.prefix(30)
-            return "awaitingUserInput(\(truncated)\(question.count > 30 ? "..." : ""))"
+        case .awaitingInteraction(let request):
+            let truncated = request.prompt.prefix(30)
+            return "awaitingInteraction(\(request.type): \(truncated)\(request.prompt.count > 30 ? "..." : ""))"
         case .paused:
             return "paused"
         case .completed(let output):

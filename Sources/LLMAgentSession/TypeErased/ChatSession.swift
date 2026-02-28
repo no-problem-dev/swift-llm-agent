@@ -161,8 +161,8 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
         return runner.resume(session, model, config)
     }
 
-    public func reply(_ answer: String) async {
-        await session.reply(answer)
+    public func respond(_ response: InteractionResponse) async {
+        await session.respond(response)
     }
 
     public func interrupt(_ message: String) async {
@@ -284,8 +284,8 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
             .idle
         case .running(let step):
             mapStep(step)
-        case .awaitingUserInput(let question):
-            .awaitingUserInput(question: question)
+        case .awaitingInteraction(let request):
+            .awaitingInteraction(request: request)
         case .paused:
             .paused
         case .completed(let output):
@@ -312,8 +312,6 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
             return .toolResult(name: result.name, output: result.output, isError: result.isError)
         case .interrupted(let msg):
             return .interrupted(msg)
-        case .askingUser(let question):
-            return .askingUser(question)
         }
     }
 }

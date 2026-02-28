@@ -38,8 +38,8 @@ public protocol ChatSessionProtocol: Sendable {
     /// 一時停止/エラーから再開
     func resume() async -> AsyncThrowingStream<SessionPhaseEvent, Error>
 
-    /// インタラクティブモードでの回答
-    func reply(_ answer: String) async
+    /// インタラクション応答を送信
+    func respond(_ response: InteractionResponse) async
 
     /// 実行中に割り込みメッセージを送信
     func interrupt(_ message: String) async

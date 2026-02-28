@@ -23,7 +23,9 @@ import LLMAgent
 /// let turnConfig = TurnConfiguration(
 ///     systemPrompt: SystemPrompt { "リサーチアシスタントです。" },
 ///     tools: ToolSet { WebSearchTool() },
-///     interactiveMode: true
+///     interactiveTools: InteractiveToolConfiguration(
+///         priorityTools: [AskUserTool()]
+///     )
 /// )
 ///
 /// for try await phase in session.run(
@@ -35,6 +37,8 @@ import LLMAgent
 ///     switch phase {
 ///     case .running(let step):
 ///         print("Step: \(step)")
+///     case .awaitingInteraction(let request):
+///         // InteractionView を表示して respond() を呼ぶ
 ///     case .completed(let output):
 ///         print("Result: \(output)")
 ///     default:
@@ -64,8 +68,8 @@ public protocol ConversationalAgentSessionProtocol<Client>: Actor {
 
     // MARK: - User Interaction API
 
-    var waitingForAnswer: Bool { get async }
-    func reply(_ answer: String) async
+    var waitingForResponse: Bool { get async }
+    func respond(_ response: InteractionResponse) async
 
     // MARK: - Core API
 
