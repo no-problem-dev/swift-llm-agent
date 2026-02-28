@@ -290,6 +290,8 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
             .paused
         case .completed(let output):
             .completed(result: renderOutput(output))
+        case .completedText(let text):
+            .completed(result: .plainText(text))
         case .failed(let error):
             .failed(error: error)
         }

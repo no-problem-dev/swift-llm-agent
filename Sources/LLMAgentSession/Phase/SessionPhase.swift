@@ -66,10 +66,16 @@ public enum SessionPhase<Output: StructuredProtocol>: Sendable {
     /// 一時停止（cancel後、再開可能）
     case paused
 
-    /// 正常完了
+    /// 正常完了（構造化出力）
     ///
     /// - Parameter output: 型安全な構造化出力
     case completed(output: Output)
+
+    /// 正常完了（プレーンテキスト）
+    ///
+    /// `skipFinalOutput` が有効な場合に使用。
+    /// LLM のテキスト応答を JSON デコードせずそのまま返す。
+    case completedText(text: String)
 
     /// エラー発生（再開可能）
     case failed(error: String)
@@ -126,6 +132,14 @@ extension SessionPhase {
         return nil
     }
 
+    /// プレーンテキスト出力（completedText の場合のみ）
+    public var completedText: String? {
+        if case .completedText(let text) = self {
+            return text
+        }
+        return nil
+    }
+
     /// エラー文字列（failed の場合のみ）
     public var error: String? {
         if case .failed(let error) = self {
@@ -153,6 +167,9 @@ extension SessionPhase: CustomStringConvertible {
             let outputStr = String(describing: output)
             let truncated = outputStr.prefix(30)
             return "completed(\(truncated)\(outputStr.count > 30 ? "..." : ""))"
+        case .completedText(let text):
+            let truncated = text.prefix(30)
+            return "completedText(\(truncated)\(text.count > 30 ? "..." : ""))"
         case .failed(let error):
             let truncated = error.prefix(30)
             return "failed(\(truncated)\(error.count > 30 ? "..." : ""))"

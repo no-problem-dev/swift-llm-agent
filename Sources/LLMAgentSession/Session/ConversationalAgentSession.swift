@@ -407,16 +407,10 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
 
                     if toolCalls.isEmpty {
                         if configuration.skipFinalOutput {
-                            // skipFinalOutput: テキスト応答をそのまま返す
+                            // skipFinalOutput: テキスト応答を JSON デコードせずそのまま返す
                             let text = extractTextContent(from: response)
                             status = .idle
-                            do {
-                                let output = try decodeOutput(text, as: Output.self)
-                                continuation.yield(.completed(output: output))
-                            } catch {
-                                // デコード失敗時もテキストとして返す試み
-                                throw ConversationalAgentError.outputDecodingFailed(error)
-                            }
+                            continuation.yield(.completedText(text: text))
                             continuation.finish()
                             return
                         } else if !tools.isEmpty {
@@ -573,7 +567,12 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
 
             // ハードリミット到達: graceful degradation
             let lastText = extractLastAssistantText()
-            if !lastText.isEmpty,
+            if configuration.skipFinalOutput, !lastText.isEmpty {
+                // skipFinalOutput: プレーンテキストとして返す
+                status = .idle
+                continuation.yield(.completedText(text: lastText))
+                continuation.finish()
+            } else if !lastText.isEmpty,
                let output = try? JSONDecoder.snakeCaseDecoder.decode(Output.self, from: Data(lastText.utf8)) {
                 status = .idle
                 continuation.yield(.completed(output: output))
