@@ -87,6 +87,14 @@ public struct AgentConfiguration: Sendable {
     /// 思考プロセスをストリーミングで返します。
     public let thinkingMode: ThinkingMode
 
+    /// 構造化出力フェーズをスキップするか
+    ///
+    /// `true` の場合、ツール呼び出しが完了した後に finalOutput フェーズ
+    /// （構造化 JSON 出力要求）をスキップし、LLM のテキスト応答をそのまま返します。
+    ///
+    /// ローカル LLM など、構造化 JSON 出力が安定しないモデルに適しています。
+    public let skipFinalOutput: Bool
+
     /// デフォルト設定
     public static let `default` = AgentConfiguration(
         maxSteps: 10,
@@ -102,7 +110,8 @@ public struct AgentConfiguration: Sendable {
         maxDuplicateToolCalls: Int = 1,
         maxToolCallsPerTool: Int? = 5,
         maxAskUserCalls: Int? = nil,
-        thinkingMode: ThinkingMode = .disabled
+        thinkingMode: ThinkingMode = .disabled,
+        skipFinalOutput: Bool = false
     ) {
         self.maxSteps = maxSteps
         self.softMaxSteps = softMaxSteps ?? max(1, maxSteps - 2)
@@ -111,6 +120,7 @@ public struct AgentConfiguration: Sendable {
         self.maxToolCallsPerTool = maxToolCallsPerTool
         self.maxAskUserCalls = maxAskUserCalls
         self.thinkingMode = thinkingMode
+        self.skipFinalOutput = skipFinalOutput
     }
 }
 
