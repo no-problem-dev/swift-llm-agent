@@ -301,12 +301,15 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         // TurnConfiguration からローカル変数に展開
         var tools = turn.tools
         var effectiveSystemPrompt = turn.systemPrompt
+        // InteractiveTool の名前 → 実体マッピング（as? キャスト回避用）
+        var interactiveToolMap: [String: any InteractiveTool] = [:]
         if let interactiveConfig = turn.interactiveTools {
             for tool in interactiveConfig.priorityTools {
                 tools = tools.appending(tool)
+                interactiveToolMap[tool.toolName] = tool
             }
             #if DEBUG
-            let toolNames = interactiveConfig.priorityTools.map { $0.toolName }
+            let toolNames = Array(interactiveToolMap.keys)
             print("[InteractiveTools] Injected \(toolNames.count) tools: \(toolNames.joined(separator: ", "))")
             #endif
             // インタラクティブツールが利用可能な場合、ガイダンスを自動追加
@@ -463,12 +466,19 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
 
                         for call in toolCalls {
                             continuation.yield(.running(step: .toolCall(call)))
-                            if let tool = tools.tool(named: call.name) as? any InteractiveTool {
+                            // interactiveToolMap（名前ベース）で確実に検出する
+                            // as? any InteractiveTool キャストは existential type erasure で失敗する可能性がある
+                            if let tool = interactiveToolMap[call.name] {
                                 #if DEBUG
                                 print("[InteractiveTools] Detected interactive tool call: \(call.name) (type: \(tool.interactionType))")
                                 #endif
                                 interactiveCall = (tool: tool, call: call)
                             } else {
+                                #if DEBUG
+                                if interactiveToolMap.keys.contains(where: { $0 == call.name }) {
+                                    print("[InteractiveTools] WARNING: Tool '\(call.name)' in map but lookup failed")
+                                }
+                                #endif
                                 regularCalls.append(call)
                             }
                         }
