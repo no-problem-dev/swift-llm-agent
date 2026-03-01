@@ -135,14 +135,16 @@ public enum SkillLoader {
         let compatibility = frontmatter["compatibility"] as? String
         let version = frontmatter["version"] as? String
         let author = frontmatter["author"] as? String
+        let tags = frontmatter["tags"] as? [String]
 
         var metadata: SkillMetadata? = nil
-        if license != nil || compatibility != nil || version != nil || author != nil {
+        if license != nil || compatibility != nil || version != nil || author != nil || tags != nil {
             metadata = SkillMetadata(
                 license: license,
                 compatibility: compatibility,
                 version: version,
-                author: author
+                author: author,
+                tags: tags
             )
         }
 

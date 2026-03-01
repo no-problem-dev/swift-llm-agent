@@ -10,9 +10,16 @@ import LLMAgent
     #expect(kit.name == "interactive")
 }
 
-@Test func testInteractiveSkillKitContainsEightSkills() {
+@Test func testInteractiveSkillCatalogLoadsBundledSkills() throws {
+    let skills = try InteractiveSkillCatalog.loadBundledSkills()
+    #expect(skills.count == 14)
+    #expect(skills.first?.name == "morning")
+    #expect(skills.last?.name == "context_restart")
+}
+
+@Test func testInteractiveSkillKitContainsFourteenSkills() {
     let kit = InteractiveSkillKit()
-    #expect(kit.skillCount == 8)
+    #expect(kit.skillCount == 14)
 }
 
 @Test func testInteractiveSkillKitSkillNames() {
@@ -20,6 +27,8 @@ import LLMAgent
     #expect(kit.skillNames == [
         "morning", "journal", "plan", "research",
         "draft", "brainstorm", "decide", "learn",
+        "next_action", "handoff_draft", "read_later_distill",
+        "meeting_prep_light", "capture_to_tasks", "context_restart",
     ])
 }
 
@@ -33,6 +42,18 @@ import LLMAgent
     #expect(skill?.instructions.contains("朝のブリーフィング") == true)
     #expect(skill?.metadata?.version == "2.0.0")
     #expect(skill?.metadata?.tags?.contains("morning") == true)
+}
+
+@Test func testNextActionSkillProperties() {
+    let kit = InteractiveSkillKit()
+    let skill = kit.skill(named: "next_action")
+
+    #expect(skill != nil)
+    #expect(skill?.executionMode == .inline)
+    #expect(skill?.isModelInvocable == false)
+    #expect(skill?.instructions.contains("次の一手") == true)
+    #expect(skill?.metadata?.version == "2.1.0")
+    #expect(skill?.metadata?.tags?.contains("action") == true)
 }
 
 @Test func testAllSkillsAreInlineMode() {
@@ -55,9 +76,10 @@ import LLMAgent
         InteractiveSkillKit()
     }
 
-    #expect(registry.skills.count == 8)
+    #expect(registry.skills.count == 14)
     #expect(registry.skill(named: "morning") != nil)
     #expect(registry.skill(named: "learn") != nil)
+    #expect(registry.skill(named: "context_restart") != nil)
 }
 
 @Test func testRegistryBuilderMixesSkillKitAndIndividualSkills() {
@@ -70,7 +92,7 @@ import LLMAgent
         )
     }
 
-    #expect(registry.skills.count == 9)
+    #expect(registry.skills.count == 15)
     #expect(registry.skill(named: "morning") != nil)
     #expect(registry.skill(named: "custom") != nil)
 }
@@ -103,6 +125,6 @@ private struct TestSkillKit: SkillKit {
         TestSkillKit()
     }
 
-    #expect(registry.skills.count == 9)
+    #expect(registry.skills.count == 15)
     #expect(registry.skill(named: "skill-a") != nil)
 }

@@ -58,12 +58,18 @@ let package = Package(
             .product(name: "LLMClient", package: "swift-llm-client"),
             .product(name: "LLMTool", package: "swift-llm-client"),
         ]),
-        .target(name: "LLMSkill", dependencies: [
-            "LLMAgent",
-            "LLMSubAgent",
-            .product(name: "LLMClient", package: "swift-llm-client"),
-            .product(name: "LLMTool", package: "swift-llm-client"),
-        ]),
+        .target(
+            name: "LLMSkill",
+            dependencies: [
+                "LLMAgent",
+                "LLMSubAgent",
+                .product(name: "LLMClient", package: "swift-llm-client"),
+                .product(name: "LLMTool", package: "swift-llm-client"),
+            ],
+            resources: [
+                .copy("Resources/InteractiveSkills"),
+            ]
+        ),
         // Tests
         .testTarget(name: "LLMAgentTests", dependencies: ["LLMAgent"]),
         .testTarget(name: "LLMMCPTests", dependencies: ["LLMMCP"]),
