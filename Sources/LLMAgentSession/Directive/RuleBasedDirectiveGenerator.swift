@@ -78,9 +78,8 @@ public struct RuleBasedDirectiveGenerator: DirectiveGenerator, Sendable {
         ]
 
         return InteractionRequest(
-            type: .actionMenu,
             prompt: "分析結果に基づくアクション",
-            payload: .actionMenu(actions: actions, quickReplies: quickReplies),
+            payload: InteractionPayload(ActionMenuPayload(actions: actions, quickReplies: quickReplies)),
             dismissible: true
         )
     }
@@ -118,9 +117,8 @@ public struct RuleBasedDirectiveGenerator: DirectiveGenerator, Sendable {
         ]
 
         return InteractionRequest(
-            type: .actionMenu,
             prompt: "コードレビュー結果に基づくアクション",
-            payload: .actionMenu(actions: actions, quickReplies: quickReplies),
+            payload: InteractionPayload(ActionMenuPayload(actions: actions, quickReplies: quickReplies)),
             dismissible: true
         )
     }
@@ -159,9 +157,8 @@ public struct RuleBasedDirectiveGenerator: DirectiveGenerator, Sendable {
         ]
 
         return InteractionRequest(
-            type: .actionMenu,
             prompt: "タスク計画に基づくアクション",
-            payload: .actionMenu(actions: actions, quickReplies: quickReplies),
+            payload: InteractionPayload(ActionMenuPayload(actions: actions, quickReplies: quickReplies)),
             dismissible: true
         )
     }
@@ -187,9 +184,8 @@ public struct RuleBasedDirectiveGenerator: DirectiveGenerator, Sendable {
         ]
 
         return InteractionRequest(
-            type: .actionMenu,
             prompt: "サマリーに基づくアクション",
-            payload: .actionMenu(actions: actions, quickReplies: quickReplies),
+            payload: InteractionPayload(ActionMenuPayload(actions: actions, quickReplies: quickReplies)),
             dismissible: true
         )
     }
@@ -203,9 +199,8 @@ public struct RuleBasedDirectiveGenerator: DirectiveGenerator, Sendable {
         ]
 
         return InteractionRequest(
-            type: .actionMenu,
             prompt: "次のアクション",
-            payload: .actionMenu(actions: [], quickReplies: quickReplies),
+            payload: InteractionPayload(ActionMenuPayload(actions: [], quickReplies: quickReplies)),
             dismissible: true
         )
     }

@@ -153,7 +153,8 @@ extension SessionPhase: CustomStringConvertible {
             return "running(\(step))"
         case .awaitingInteraction(let request):
             let truncated = request.prompt.prefix(30)
-            return "awaitingInteraction(\(request.type): \(truncated)\(request.prompt.count > 30 ? "..." : ""))"
+            let typeName = String(describing: type(of: request.payload.rawValue))
+            return "awaitingInteraction(\(typeName): \(truncated)\(request.prompt.count > 30 ? "..." : ""))"
         case .paused:
             return "paused"
         case .completed(let output):

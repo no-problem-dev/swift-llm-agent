@@ -112,7 +112,7 @@ public actor InteractiveAgentSession<Client: AgentCapableClient>: ChatSessionPro
             directiveContinuation = nil
             continuation.resume(returning: InteractionResponse(
                 requestId: "",
-                content: .dismissed
+                content: .dismissed  // Uses InteractionResponseContent factory
             ))
         }
         await inner.cancel()
@@ -256,10 +256,12 @@ public actor InteractiveAgentSession<Client: AgentCapableClient>: ChatSessionPro
 
         pendingDirectiveResult = nil
 
-        switch response.content {
-        case .action(let message):
-            // アクション選択 → 新ターンを開始
-            let newStream = await inner.send(message)
+        if response.content.isDismissed {
+            // 却下 → 通常の completed
+            continuation.yield(.completed(result: result))
+        } else if !response.content.textValue.isEmpty {
+            // アクション or テキスト入力 → 新ターンを開始
+            let newStream = await inner.send(response.content.textValue)
             do {
                 for try await event in newStream {
                     if Task.isCancelled { break }
@@ -278,31 +280,8 @@ public actor InteractiveAgentSession<Client: AgentCapableClient>: ChatSessionPro
             } catch {
                 continuation.finish(throwing: error)
             }
-        case .dismissed:
-            // 却下 → 通常の completed
-            continuation.yield(.completed(result: result))
-        case .text(let text) where !text.isEmpty:
-            // テキスト入力 → 新ターンを開始
-            let newStream = await inner.send(text)
-            do {
-                for try await event in newStream {
-                    if Task.isCancelled { break }
-
-                    if case .completed(let newResult) = event {
-                        await handleCompleted(
-                            result: newResult,
-                            generator: generator,
-                            continuation: continuation
-                        )
-                    } else {
-                        continuation.yield(event)
-                    }
-                }
-            } catch {
-                continuation.finish(throwing: error)
-            }
-        default:
-            // その他 → 通常の completed
+        } else {
+            // 空テキスト → 通常の completed
             continuation.yield(.completed(result: result))
         }
     }

@@ -18,12 +18,11 @@ import Foundation
 ///         switch result.typeName {
 ///         case "AnalysisResult":
 ///             return InteractionRequest(
-///                 type: .actionMenu,
 ///                 prompt: "分析結果に基づくアクション",
-///                 payload: .actionMenu(
+///                 payload: InteractionPayload(ActionMenuPayload(
 ///                     actions: [ActionOption(label: "詳細分析", message: "...")],
 ///                     quickReplies: [QuickReplyOption(label: "リスク確認", message: "...")]
-///                 ),
+///                 )),
 ///                 dismissible: true
 ///             )
 ///         default:

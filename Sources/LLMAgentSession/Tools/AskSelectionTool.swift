@@ -8,7 +8,7 @@ import LLMTool
 ///
 /// `InteractiveTool` に準拠し、ユーザーに選択肢を提示する。
 /// セッションのランループがこのツールを検出すると、
-/// `InteractionRequest(.selection)` を生成して UI に suspend する。
+/// `InteractionRequest` を生成して UI に suspend する。
 @Tool(
     "Present a list of options for the user to select from. " +
     "Use this tool when: (1) you can identify 2-10 specific alternatives, " +
@@ -37,8 +37,6 @@ public struct AskSelectionTool {
 // MARK: - InteractiveTool Conformance
 
 extension AskSelectionTool: InteractiveTool {
-    public var interactionType: InteractionType { .selection }
-
     public func makeInteractionRequest(from arguments: Data) throws -> InteractionRequest {
         let question: String
         let optionLabels: [String]
@@ -59,20 +57,15 @@ extension AskSelectionTool: InteractiveTool {
         }
 
         return InteractionRequest(
-            type: .selection,
             prompt: question,
-            payload: .selection(options: selectionOptions, allowMultiple: allowMultiple),
+            payload: InteractionPayload(SelectionPayload(
+                options: selectionOptions, allowMultiple: allowMultiple
+            )),
             dismissible: false
         )
     }
 
     public func makeToolResult(from response: InteractionResponse) -> ToolResult {
-        let userText = response.content.textValue
-        let result = """
-        User selected: \(userText)
-
-        Proceed with the user's selection. If you need further input, use the appropriate interaction tool (ask_selection, ask_user, or ask_confirmation). NEVER output questions or choices as plain text.
-        """
-        return .text(result)
+        .text(response.content.textValue)
     }
 }

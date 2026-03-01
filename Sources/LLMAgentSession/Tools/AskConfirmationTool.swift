@@ -8,7 +8,7 @@ import LLMTool
 ///
 /// `InteractiveTool` に準拠し、ユーザーに提案を承認/修正/却下させる。
 /// セッションのランループがこのツールを検出すると、
-/// `InteractionRequest(.confirmation)` を生成して UI に suspend する。
+/// `InteractionRequest` を生成して UI に suspend する。
 @Tool(
     "Present a proposal for the user to approve, modify, or reject. " +
     "Use this tool when: (1) you have a specific plan or action to confirm before executing, " +
@@ -33,8 +33,6 @@ public struct AskConfirmationTool {
 // MARK: - InteractiveTool Conformance
 
 extension AskConfirmationTool: InteractiveTool {
-    public var interactionType: InteractionType { .confirmation }
-
     public func makeInteractionRequest(from arguments: Data) throws -> InteractionRequest {
         let proposal: String
         let allowModification: Bool
@@ -48,20 +46,15 @@ extension AskConfirmationTool: InteractiveTool {
         }
 
         return InteractionRequest(
-            type: .confirmation,
             prompt: proposal,
-            payload: .confirmation(proposal: proposal, allowModification: allowModification),
+            payload: InteractionPayload(ConfirmationPayload(
+                proposal: proposal, allowModification: allowModification
+            )),
             dismissible: false
         )
     }
 
     public func makeToolResult(from response: InteractionResponse) -> ToolResult {
-        let userText = response.content.textValue
-        let result = """
-        User responded to confirmation: \(userText)
-
-        Act on the user's decision. If you need further input, use the appropriate interaction tool (ask_selection, ask_user, or ask_confirmation). NEVER output questions or choices as plain text.
-        """
-        return .text(result)
+        .text(response.content.textValue)
     }
 }

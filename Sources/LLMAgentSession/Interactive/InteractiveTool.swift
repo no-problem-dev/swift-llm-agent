@@ -19,37 +19,36 @@ import LLMTool
 ///
 /// この間、セッションのランループは suspend し、UI が `respond()` を呼ぶまで待機する。
 ///
+/// インタラクションの種類はペイロードの型で決定される。
+/// `InteractionType` enum は不要。
+///
 /// ## 使用例
 ///
 /// ```swift
 /// struct ConfirmActionTool: InteractiveTool {
-///     var interactionType: InteractionType { .confirmation }
-///
 ///     func makeInteractionRequest(from arguments: Data) throws -> InteractionRequest {
 ///         let proposal = // decode from arguments
 ///         return InteractionRequest(
-///             type: .confirmation,
 ///             prompt: "この操作を実行しますか？",
-///             payload: .confirmation(proposal: proposal, allowModification: true)
+///             payload: InteractionPayload(ConfirmationPayload(
+///                 proposal: proposal, allowModification: true
+///             ))
 ///         )
 ///     }
 ///
 ///     func makeToolResult(from response: InteractionResponse) -> ToolResult {
-///         switch response.content {
-///         case .confirmation(.approved):
-///             return .text("User approved the action")
-///         case .confirmation(.rejected):
-///             return .text("User rejected the action")
-///         default:
-///             return .text("No decision made")
+///         if let confirmation = response.content.value(as: ConfirmationResponse.self) {
+///             switch confirmation.decision {
+///             case .approved: return .text("User approved the action")
+///             case .rejected: return .text("User rejected the action")
+///             case .modified(let text): return .text("User modified: \(text)")
+///             }
 ///         }
+///         return .text(response.content.textValue)
 ///     }
 /// }
 /// ```
 public protocol InteractiveTool: Tool {
-    /// このツールが要求するインタラクションの種類
-    var interactionType: InteractionType { get }
-
     /// ツール引数から InteractionRequest を生成
     ///
     /// - Parameter arguments: LLM から渡されたツール引数（JSON データ）

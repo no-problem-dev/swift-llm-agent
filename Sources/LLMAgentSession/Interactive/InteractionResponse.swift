@@ -22,47 +22,43 @@ public struct InteractionResponse: Sendable {
 
 // MARK: - InteractionResponseContent
 
-/// インタラクション応答の内容
-public enum InteractionResponseContent: Sendable {
-    /// 自由テキスト
-    case text(String)
+/// 型消去されたレスポンス容器
+///
+/// `InteractionResponseProtocol` 準拠型を保持し、`as?` で具体型を復元する。
+public struct InteractionResponseContent: @unchecked Sendable {
+    private let storage: any InteractionResponseProtocol
 
-    /// 選択された項目の ID リスト
-    case selected([String])
-
-    /// 承認判断
-    case confirmation(ConfirmationDecision)
-
-    /// アクション実行（アクションのメッセージ）
-    case action(String)
-
-    /// インタラクションを却下
-    case dismissed
-}
-
-// MARK: - Convenience
-
-extension InteractionResponseContent {
-    /// ツール結果として使用する文字列値を取得
-    public var textValue: String {
-        switch self {
-        case .text(let text):
-            return text.isEmpty ? "No answer provided" : text
-        case .selected(let ids):
-            return ids.joined(separator: ", ")
-        case .confirmation(let decision):
-            switch decision {
-            case .approved:
-                return "Approved"
-            case .modified(let text):
-                return "Modified: \(text)"
-            case .rejected:
-                return "Rejected"
-            }
-        case .action(let message):
-            return message
-        case .dismissed:
-            return "Dismissed"
-        }
+    public init(_ value: some InteractionResponseProtocol) {
+        self.storage = value
     }
+
+    /// ツール結果として使用する文字列値を取得
+    public var textValue: String { storage.textValue }
+
+    /// 却下されたかどうか
+    public var isDismissed: Bool { storage is DismissedResponse }
+
+    /// 型安全にレスポンスを取得
+    public func value<T: InteractionResponseProtocol>(as type: T.Type) -> T? {
+        storage as? T
+    }
+
+    // MARK: - Factory Methods
+
+    /// 却下レスポンス
+    public static let dismissed = InteractionResponseContent(DismissedResponse())
+
+    /// テキストレスポンス
+    public static func text(_ text: String) -> Self { .init(TextResponse(text: text)) }
+
+    /// 選択レスポンス
+    public static func selected(_ ids: [String]) -> Self { .init(SelectedResponse(ids: ids)) }
+
+    /// 確認レスポンス
+    public static func confirmation(_ decision: ConfirmationDecision) -> Self {
+        .init(ConfirmationResponse(decision: decision))
+    }
+
+    /// アクションレスポンス
+    public static func action(_ message: String) -> Self { .init(ActionResponse(message: message)) }
 }

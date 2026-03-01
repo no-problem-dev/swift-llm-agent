@@ -140,7 +140,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
             responseContinuation = nil
             continuation.resume(returning: InteractionResponse(
                 requestId: "",
-                content: .dismissed
+                content: .dismissed  // Uses InteractionResponseContent factory
             ))
         }
     }
@@ -508,7 +508,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                             // as? any InteractiveTool キャストは existential type erasure で失敗する可能性がある
                             if let tool = interactiveToolMap[call.name] {
                                 #if DEBUG
-                                print("[InteractiveTools] Detected interactive tool call: \(call.name) (type: \(tool.interactionType))")
+                                print("[InteractiveTools] Detected interactive tool call: \(call.name)")
                                 #endif
                                 interactiveCall = (tool: tool, call: call)
                             } else {

@@ -90,9 +90,10 @@ extension DirectiveSpec {
         }
 
         return InteractionRequest(
-            type: .actionMenu,
             prompt: prompt,
-            payload: .actionMenu(actions: actionOptions, quickReplies: quickReplyOptions),
+            payload: InteractionPayload(ActionMenuPayload(
+                actions: actionOptions, quickReplies: quickReplyOptions
+            )),
             dismissible: dismissible
         )
     }
