@@ -253,7 +253,6 @@ public enum PlannerPreset: AgentPreset {
 /// 最小構成のエージェントプリセット
 ///
 /// ツールを使用せず、純粋な会話・生成タスク向けに最適化されています。
-/// AgentBehaviorsのみを含む軽量なプリセットです。
 ///
 /// ## 使用例
 ///
@@ -266,8 +265,8 @@ public enum PlannerPreset: AgentPreset {
 /// )
 /// ```
 public enum MinimalPreset: AgentPreset {
-    /// 最小構成のシステムプロンプト（エージェント行動指示のみ）
-    public static let systemPrompt = AgentBehaviors.allBehaviors
+    /// 最小構成のシステムプロンプト（空）
+    public static let systemPrompt = SystemPrompt { }
 
     /// 空のツールセット
     public static var defaultTools: ToolSet {
@@ -312,7 +311,7 @@ public struct CustomPresetBuilder: Sendable {
 
     /// 新しいビルダーを初期化
     public init() {
-        self.systemPrompt = AgentBehaviors.allBehaviors
+        self.systemPrompt = SystemPrompt { }
         self.tools = ToolSet { }
         self.configuration = .default
     }

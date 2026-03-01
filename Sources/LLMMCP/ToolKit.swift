@@ -18,7 +18,6 @@ import LLMTool
 ///     MCPServer(command: "npx", arguments: ["-y", "@anthropic/mcp-server-brave"])
 ///
 ///     // 内蔵ToolKit
-///     MemoryToolKit()
 ///     FileSystemToolKit(allowedPaths: ["/tmp"])
 /// }
 /// ```

@@ -57,22 +57,11 @@ public struct InteractiveToolConfiguration: Sendable {
     /// `ask_user` / `ask_selection` / `ask_confirmation` が利用可能な場合に、
     /// LLM が適切にユーザーとインタラクトするための行動指示。
     public static let defaultGuidance = PromptComponent.behavior(
-        "CRITICAL RULE: You MUST NEVER write questions, option lists, or confirmation requests " +
-        "as plain text in your response. When you need user input, you MUST call the appropriate " +
-        "interaction tool. Outputting questions or choices as text is a failure mode.\n\n" +
-        "Tool selection rules:\n" +
-        "1. ask_selection (PREFERRED): When you can identify 2-10 specific options. " +
-        "Examples: suggesting research topics, choosing between approaches, " +
-        "selecting a format or style. ALWAYS prefer this over ask_user.\n" +
-        "2. ask_user: ONLY when the answer is truly open-ended and cannot be anticipated " +
-        "(e.g., 'What is your name?', 'Describe your use case').\n" +
-        "3. ask_confirmation: When you have a specific plan and want approval before executing.\n\n" +
-        "You MUST use these tools when:\n" +
-        "- The request is vague (e.g., '調べて', '何か教えて', 'help me with something').\n" +
-        "- The user explicitly asks for options, suggestions, or choices.\n" +
-        "- Multiple valid approaches exist and the choice affects the outcome.\n\n" +
-        "You should proceed WITHOUT asking when:\n" +
-        "- The task is clear and specific enough to execute directly.\n" +
-        "- You can gather the needed information through other tools (web_search, etc.)."
+        "ユーザーへの質問や選択肢提示にはインタラクションツールを使う。テキストで質問を書かない。\n\n" +
+        "使い分け:\n" +
+        "- ask_selection（優先）: 具体的な選択肢を提示できるとき\n" +
+        "- ask_user: 自由回答が必要なとき\n" +
+        "- ask_confirmation: 実行計画の承認を得たいとき\n\n" +
+        "タスクが明確で進行できる場合は、質問せずに進める。"
     )
 }

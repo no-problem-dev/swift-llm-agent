@@ -11,7 +11,7 @@ extension ToolSetBuilder {
     ///
     /// ```swift
     /// let tools = ToolSet {
-    ///     MemoryToolKit()      // ToolKitのすべてのツールが追加される
+    ///     WebToolKit()         // ToolKitのすべてのツールが追加される
     ///     GetWeatherTool()     // 通常のToolも混在可能
     /// }
     /// ```
