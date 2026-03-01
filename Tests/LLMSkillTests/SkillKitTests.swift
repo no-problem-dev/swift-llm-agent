@@ -12,24 +12,25 @@ import LLMAgent
 
 @Test func testInteractiveSkillCatalogLoadsBundledSkills() throws {
     let skills = try InteractiveSkillCatalog.loadBundledSkills()
-    #expect(skills.count == 15)
-    #expect(skills.first?.name == "morning")
+    #expect(skills.count == 18)
+    #expect(skills.first?.name == "scan")
     #expect(skills.last?.name == "session_recall")
 }
 
-@Test func testInteractiveSkillKitContainsFourteenSkills() {
+@Test func testInteractiveSkillKitContainsEighteenSkills() {
     let kit = InteractiveSkillKit()
-    #expect(kit.skillCount == 15)
+    #expect(kit.skillCount == 18)
 }
 
 @Test func testInteractiveSkillKitSkillNames() {
     let kit = InteractiveSkillKit()
     #expect(kit.skillNames == [
-        "morning", "journal", "plan", "research",
-        "draft", "brainstorm", "decide", "learn",
-        "next_action", "handoff_draft", "read_later_distill",
-        "meeting_prep_light", "capture_to_tasks", "context_restart",
-        "session_recall",
+        "scan", "quick_note", "digest",
+        "capture_to_tasks", "untangle", "decide", "next_action",
+        "research", "learn", "compare", "explain",
+        "morning", "journal", "focus",
+        "draft", "meeting_prep",
+        "context_restart", "session_recall",
     ])
 }
 
@@ -41,7 +42,7 @@ import LLMAgent
     #expect(skill?.executionMode == .inline)
     #expect(skill?.isModelInvocable == false)
     #expect(skill?.instructions.contains("朝のブリーフィング") == true)
-    #expect(skill?.metadata?.version == "2.0.0")
+    #expect(skill?.metadata?.version == "3.0.0")
     #expect(skill?.metadata?.tags?.contains("morning") == true)
 }
 
@@ -53,7 +54,7 @@ import LLMAgent
     #expect(skill?.executionMode == .inline)
     #expect(skill?.isModelInvocable == false)
     #expect(skill?.instructions.contains("次の一手") == true)
-    #expect(skill?.metadata?.version == "2.1.0")
+    #expect(skill?.metadata?.version == "3.0.0")
     #expect(skill?.metadata?.tags?.contains("action") == true)
 }
 
@@ -77,7 +78,7 @@ import LLMAgent
         InteractiveSkillKit()
     }
 
-    #expect(registry.skills.count == 15)
+    #expect(registry.skills.count == 18)
     #expect(registry.skill(named: "morning") != nil)
     #expect(registry.skill(named: "learn") != nil)
     #expect(registry.skill(named: "context_restart") != nil)
@@ -93,7 +94,7 @@ import LLMAgent
         )
     }
 
-    #expect(registry.skills.count == 16)
+    #expect(registry.skills.count == 19)
     #expect(registry.skill(named: "morning") != nil)
     #expect(registry.skill(named: "custom") != nil)
 }
@@ -126,6 +127,6 @@ private struct TestSkillKit: SkillKit {
         TestSkillKit()
     }
 
-    #expect(registry.skills.count == 16)
+    #expect(registry.skills.count == 19)
     #expect(registry.skill(named: "skill-a") != nil)
 }
