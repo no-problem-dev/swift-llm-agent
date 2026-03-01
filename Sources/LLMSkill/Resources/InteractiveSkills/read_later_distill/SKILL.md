@@ -1,6 +1,10 @@
 ---
 name: read_later_distill
 description: URLやテキストを読んで、今読む価値と注目点だけを素早く判断する
+display-name: 積読整理
+icon: doc.text.magnifyingglass
+category: thinking
+display-order: 11
 context: inline
 disable-model-invocation: true
 version: 2.1.0

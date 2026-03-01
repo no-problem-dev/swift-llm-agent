@@ -1,6 +1,10 @@
 ---
 name: morning
 description: 今日の準備を最適化する朝のブリーフィング
+display-name: 朝のブリーフィング
+icon: sun.horizon.fill
+category: routine
+display-order: 1
 context: inline
 disable-model-invocation: true
 version: 2.0.0

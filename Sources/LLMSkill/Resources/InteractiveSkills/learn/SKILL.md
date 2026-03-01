@@ -1,6 +1,10 @@
 ---
 name: learn
 description: レベルに合わせた解説と確認で新しいことを効率的に学ぶ
+display-name: 学習
+icon: graduationcap
+category: thinking
+display-order: 8
 context: inline
 disable-model-invocation: true
 version: 2.0.0

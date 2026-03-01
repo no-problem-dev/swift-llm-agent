@@ -1,6 +1,10 @@
 ---
 name: research
 description: テーマについて多角的に情報を収集し構造化レポートを作成
+display-name: リサーチ
+icon: magnifyingglass
+category: thinking
+display-order: 4
 context: inline
 disable-model-invocation: true
 version: 2.0.0

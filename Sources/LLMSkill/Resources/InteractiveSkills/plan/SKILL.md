@@ -1,6 +1,10 @@
 ---
 name: plan
 description: 予定の整理・新規計画の作成をサポート
+display-name: 予定整理
+icon: calendar.badge.clock
+category: routine
+display-order: 3
 context: inline
 disable-model-invocation: true
 version: 2.0.0

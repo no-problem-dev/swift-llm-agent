@@ -1,6 +1,10 @@
 ---
 name: journal
 description: 対話を通じて1日を振り返り気づきを得る
+display-name: 振り返り
+icon: book.fill
+category: routine
+display-order: 2
 context: inline
 disable-model-invocation: true
 version: 2.0.0

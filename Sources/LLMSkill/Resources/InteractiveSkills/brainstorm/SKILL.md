@@ -1,6 +1,10 @@
 ---
 name: brainstorm
 description: 多角的なアイデア出しを支援し、可能性を広げる
+display-name: ブレスト
+icon: lightbulb.max
+category: thinking
+display-order: 6
 context: inline
 disable-model-invocation: true
 version: 2.0.0

@@ -1,6 +1,10 @@
 ---
 name: meeting_prep_light
 description: 打ち合わせ前に確認論点と質問事項を短時間で整理する
+display-name: 打ち合わせ前
+icon: person.2.badge.gearshape
+category: routine
+display-order: 12
 context: inline
 disable-model-invocation: true
 version: 2.1.0

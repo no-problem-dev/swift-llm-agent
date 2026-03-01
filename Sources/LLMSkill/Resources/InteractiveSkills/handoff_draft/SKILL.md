@@ -1,6 +1,10 @@
 ---
 name: handoff_draft
 description: 依頼・共有・引き継ぎに使える短い文面を素早く整える
+display-name: 依頼・引き継ぎ
+icon: arrowshape.turn.up.right
+category: thinking
+display-order: 10
 context: inline
 disable-model-invocation: true
 version: 2.1.0

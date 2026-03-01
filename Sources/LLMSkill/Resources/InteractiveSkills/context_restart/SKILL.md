@@ -1,6 +1,10 @@
 ---
 name: context_restart
 description: 中断した作業の到達点を整理し、再開の最初の一手を決める
+display-name: 中断復帰
+icon: arrow.clockwise.circle
+category: routine
+display-order: 14
 context: inline
 disable-model-invocation: true
 version: 2.1.0

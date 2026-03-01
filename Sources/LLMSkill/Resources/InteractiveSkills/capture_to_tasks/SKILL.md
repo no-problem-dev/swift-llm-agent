@@ -1,6 +1,10 @@
 ---
 name: capture_to_tasks
 description: 雑多なメモや断片情報を実行できるタスクに整理する
+display-name: メモ整理
+icon: checklist
+category: routine
+display-order: 13
 context: inline
 disable-model-invocation: true
 version: 2.1.0

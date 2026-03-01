@@ -1,4 +1,5 @@
 import Foundation
+import LLMClient
 
 // MARK: - InteractionResponse
 
@@ -34,6 +35,9 @@ public struct InteractionResponseContent: @unchecked Sendable {
 
     /// ツール結果として使用する文字列値を取得
     public var textValue: String { storage.textValue }
+
+    /// LLM に送信するメディアコンテンツ
+    public var mediaContents: [ImageContent] { storage.mediaContents }
 
     /// 却下されたかどうか
     public var isDismissed: Bool { storage is DismissedResponse }

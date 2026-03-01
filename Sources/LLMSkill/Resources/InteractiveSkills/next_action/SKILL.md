@@ -1,6 +1,10 @@
 ---
 name: next_action
 description: 曖昧な仕事を次の5〜15分で着手できる一手に分解する
+display-name: 次の一手
+icon: figure.walk
+category: routine
+display-order: 9
 context: inline
 disable-model-invocation: true
 version: 2.1.0

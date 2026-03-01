@@ -1,6 +1,10 @@
 ---
 name: decide
 description: 迷いを構造化して納得感のある意思決定をサポート
+display-name: 意思決定
+icon: arrow.triangle.branch
+category: thinking
+display-order: 7
 context: inline
 disable-model-invocation: true
 version: 2.0.0

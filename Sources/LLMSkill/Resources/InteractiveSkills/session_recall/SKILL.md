@@ -1,6 +1,10 @@
 ---
 name: session_recall
 description: 過去のセッションを会話形式で探索・検索する
+display-name: 会話を探す
+icon: clock.arrow.trianglehead.counterclockwise.rotate.90
+category: routine
+display-order: 15
 context: inline
 disable-model-invocation: true
 version: 1.1.0

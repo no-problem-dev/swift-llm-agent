@@ -125,6 +125,19 @@ public enum SkillLoader {
             throw SkillError.missingAllowedToolsForFork(name)
         }
 
+        // 表示メタデータ
+        let displayName = frontmatter["display-name"] as? String
+        let iconName = frontmatter["icon"] as? String ?? "sparkles"
+        let category = frontmatter["category"] as? String
+        let displayOrder: Int
+        if let orderValue = frontmatter["display-order"] as? String, let order = Int(orderValue) {
+            displayOrder = order
+        } else if let orderInt = frontmatter["display-order"] as? Int {
+            displayOrder = orderInt
+        } else {
+            displayOrder = 999
+        }
+
         // 呼び出し制御
         let isUserInvocable = frontmatter["user-invocable"] as? Bool ?? true
         let disableModel = frontmatter["disable-model-invocation"] as? Bool ?? false
@@ -186,6 +199,10 @@ public enum SkillLoader {
             instructions: instructions,
             allowedTools: allowedTools,
             configuration: configuration,
+            displayName: displayName,
+            iconName: iconName,
+            category: category,
+            displayOrder: displayOrder,
             isUserInvocable: isUserInvocable,
             isModelInvocable: !disableModel,
             argumentHint: argumentHint,

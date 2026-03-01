@@ -698,7 +698,12 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                     callId: call.id, name: call.name,
                                     output: toolResult.stringValue, isError: toolResult.isError
                                 )
-                                addToolResults([toolResponse])
+                                let mediaContents = response.content.mediaContents
+                                if mediaContents.isEmpty {
+                                    addToolResults([toolResponse])
+                                } else {
+                                    addToolResultsWithMedia([toolResponse], images: mediaContents)
+                                }
                                 continuation.yield(.running(step: .toolResult(toolResponse)))
                                 pendingInteractiveCall = nil
                             }
@@ -798,6 +803,21 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                 isError: result.isError
             )
         }
+        messages.append(LLMMessage(role: .user, contents: contents))
+    }
+
+    private func addToolResultsWithMedia(_ results: [ToolResponse], images: [ImageContent]) {
+        guard !results.isEmpty else { return }
+
+        var contents = results.map { result in
+            LLMMessage.MessageContent.toolResult(
+                toolCallId: result.callId,
+                name: result.name,
+                content: result.output,
+                isError: result.isError
+            )
+        }
+        contents += images.map { .image($0) }
         messages.append(LLMMessage(role: .user, contents: contents))
     }
 

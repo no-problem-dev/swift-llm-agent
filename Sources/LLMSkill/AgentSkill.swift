@@ -90,6 +90,18 @@ public protocol AgentSkill: Sendable {
 
     // MARK: - Optional (UI / Metadata)
 
+    /// UI 表示用の名前（例: "朝のブリーフィング"）
+    var displayName: String { get }
+
+    /// SF Symbols アイコン名（例: "sun.horizon.fill"）
+    var iconName: String { get }
+
+    /// スキルの論理カテゴリ（例: "routine", "thinking"）
+    var category: String? { get }
+
+    /// 表示順序（小さいほど先頭）
+    var displayOrder: Int { get }
+
     /// 引数のヒント（UI 表示用、例: "[URL or keyword]"）
     var argumentHint: String? { get }
 
@@ -108,6 +120,10 @@ extension AgentSkill {
     public var systemPrompt: SystemPrompt? { nil }
     public var configuration: AgentConfiguration { .default }
     public var isUserInvocable: Bool { true }
+    public var displayName: String { name }
+    public var iconName: String { "sparkles" }
+    public var category: String? { nil }
+    public var displayOrder: Int { 999 }
     public var isModelInvocable: Bool { true }
     public var argumentHint: String? { nil }
     public var metadata: SkillMetadata? { nil }
@@ -140,6 +156,10 @@ public struct AgentSkillDefinition: AgentSkill {
     public let tools: ToolSet
     public let systemPrompt: SystemPrompt?
     public let configuration: AgentConfiguration
+    public let displayName: String
+    public let iconName: String
+    public let category: String?
+    public let displayOrder: Int
     public let isUserInvocable: Bool
     public let isModelInvocable: Bool
     public let argumentHint: String?
@@ -155,6 +175,10 @@ public struct AgentSkillDefinition: AgentSkill {
         tools: ToolSet = ToolSet(),
         systemPrompt: SystemPrompt? = nil,
         configuration: AgentConfiguration = .default,
+        displayName: String? = nil,
+        iconName: String = "sparkles",
+        category: String? = nil,
+        displayOrder: Int = 999,
         isUserInvocable: Bool = true,
         isModelInvocable: Bool = true,
         argumentHint: String? = nil,
@@ -169,6 +193,10 @@ public struct AgentSkillDefinition: AgentSkill {
         self.tools = tools
         self.systemPrompt = systemPrompt
         self.configuration = configuration
+        self.displayName = displayName ?? name
+        self.iconName = iconName
+        self.category = category
+        self.displayOrder = displayOrder
         self.isUserInvocable = isUserInvocable
         self.isModelInvocable = isModelInvocable
         self.argumentHint = argumentHint
@@ -197,6 +225,10 @@ public struct AgentSkillDefinition: AgentSkill {
         allowedTools: [String]? = nil,
         systemPrompt: SystemPrompt? = nil,
         configuration: AgentConfiguration = .default,
+        displayName: String? = nil,
+        iconName: String = "sparkles",
+        category: String? = nil,
+        displayOrder: Int = 999,
         isUserInvocable: Bool = true,
         isModelInvocable: Bool = true,
         argumentHint: String? = nil,
@@ -212,6 +244,10 @@ public struct AgentSkillDefinition: AgentSkill {
         self.tools = ToolSet(tools)
         self.systemPrompt = systemPrompt
         self.configuration = configuration
+        self.displayName = displayName ?? name
+        self.iconName = iconName
+        self.category = category
+        self.displayOrder = displayOrder
         self.isUserInvocable = isUserInvocable
         self.isModelInvocable = isModelInvocable
         self.argumentHint = argumentHint

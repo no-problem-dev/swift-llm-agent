@@ -1,6 +1,10 @@
 ---
 name: draft
 description: メール・SNS投稿・報告書など、あらゆる文章の下書きを作成
+display-name: 下書き
+icon: pencil.and.outline
+category: thinking
+display-order: 5
 context: inline
 disable-model-invocation: true
 version: 2.0.0
