@@ -623,7 +623,8 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                             )
                                             return (index, ToolResponse(
                                                 callId: call.id, name: call.name,
-                                                output: result.stringValue, isError: result.isError
+                                                output: result.stringValue, isError: result.isError,
+                                                mediaContents: result.mediaContents
                                             ))
                                         } catch {
                                             return (index, ToolResponse(
@@ -699,11 +700,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                     output: toolResult.stringValue, isError: toolResult.isError
                                 )
                                 let mediaContents = response.content.mediaContents
-                                if mediaContents.isEmpty {
-                                    addToolResults([toolResponse])
-                                } else {
-                                    addToolResultsWithMedia([toolResponse], images: mediaContents)
-                                }
+                                addToolResults([toolResponse], extraImages: mediaContents)
                                 continuation.yield(.running(step: .toolResult(toolResponse)))
                                 pendingInteractiveCall = nil
                             }
@@ -792,21 +789,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         }
     }
 
-    private func addToolResults(_ results: [ToolResponse]) {
-        guard !results.isEmpty else { return }
-
-        let contents = results.map { result in
-            LLMMessage.MessageContent.toolResult(
-                toolCallId: result.callId,
-                name: result.name,
-                content: result.output,
-                isError: result.isError
-            )
-        }
-        messages.append(LLMMessage(role: .user, contents: contents))
-    }
-
-    private func addToolResultsWithMedia(_ results: [ToolResponse], images: [ImageContent]) {
+    private func addToolResults(_ results: [ToolResponse], extraImages: [ImageContent] = []) {
         guard !results.isEmpty else { return }
 
         var contents = results.map { result in
@@ -817,7 +800,9 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                 isError: result.isError
             )
         }
-        contents += images.map { .image($0) }
+        // 各 ToolResponse のメディアを集約 + 追加画像
+        let allMedia = results.flatMap(\.mediaContents) + extraImages
+        contents += allMedia.map { .image($0) }
         messages.append(LLMMessage(role: .user, contents: contents))
     }
 
@@ -837,7 +822,8 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                 callId: call.id,
                 name: call.name,
                 output: result.stringValue,
-                isError: result.isError
+                isError: result.isError,
+                mediaContents: result.mediaContents
             )
         } catch {
             return ToolResponse(
