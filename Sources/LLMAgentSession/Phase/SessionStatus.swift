@@ -22,6 +22,11 @@ import Foundation
 ///    │                        │                         ├── respond() → running
 ///    │                        │                         └── cancel() → paused
 ///    │                        │
+///    │                        ├── Policy check ──→ awaitingAuthorization
+///    │                        │                         │
+///    │                        │                         ├── approve → running
+///    │                        │                         └── cancel() → paused
+///    │                        │
 ///    │                        ├── 正常完了 ─────→ idle
 ///    │                        │
 ///    │                        └── エラー ────────→ failed
@@ -50,6 +55,11 @@ public enum SessionStatus: Sendable, Equatable {
     /// 許可される操作: `respond()`, `cancel()`
     case awaitingInteraction(request: InteractionRequest)
 
+    /// ツール実行承認待ち（ToolExecutionPolicy 起因）
+    ///
+    /// 許可される操作: `respondToAuthorization()`, `cancel()`
+    case awaitingAuthorization(request: ToolApprovalRequest)
+
     /// 一時停止（cancel後、再開可能）
     ///
     /// 許可される操作: `resume()`, `clear()`
@@ -69,7 +79,7 @@ extension SessionStatus {
     /// `running` または `awaitingInteraction` の場合に `true`
     public var isActive: Bool {
         switch self {
-        case .running, .awaitingInteraction:
+        case .running, .awaitingInteraction, .awaitingAuthorization:
             return true
         default:
             return false
@@ -121,10 +131,26 @@ extension SessionStatus {
         return false
     }
 
+    /// `respondToAuthorization()` が呼び出し可能かどうか
+    public var canRespondToAuthorization: Bool {
+        if case .awaitingAuthorization = self {
+            return true
+        }
+        return false
+    }
+
+    /// 承認リクエスト（awaitingAuthorization の場合のみ）
+    public var authorizationRequest: ToolApprovalRequest? {
+        if case .awaitingAuthorization(let request) = self {
+            return request
+        }
+        return nil
+    }
+
     /// `cancel()` が呼び出し可能かどうか
     public var canCancel: Bool {
         switch self {
-        case .running, .awaitingInteraction:
+        case .running, .awaitingInteraction, .awaitingAuthorization:
             return true
         default:
             return false
@@ -170,6 +196,8 @@ extension SessionStatus: CustomStringConvertible {
         case .awaitingInteraction(let request):
             let truncated = request.prompt.prefix(30)
             return "awaitingInteraction(\(truncated)\(request.prompt.count > 30 ? "..." : ""))"
+        case .awaitingAuthorization(let request):
+            return "awaitingAuthorization(\(request.toolCall.name))"
         case .paused:
             return "paused"
         case .failed(let error):

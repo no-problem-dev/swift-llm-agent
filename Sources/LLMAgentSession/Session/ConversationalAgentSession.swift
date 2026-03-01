@@ -81,6 +81,10 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
     private var responseContinuation: CheckedContinuation<InteractionResponse, Never>?
     private var interactiveCallCount: Int = 0
 
+    /// ツール実行承認
+    private var authorizationContinuation: CheckedContinuation<ToolApprovalResponse, Never>?
+    private let approvalCache = SessionApprovalCache()
+
     // MARK: - Initialization
 
     /// セッションを初期化
@@ -128,6 +132,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         messages.removeAll()
         interruptQueue.removeAll()
         status = .idle
+        Task { await approvalCache.clear() }
     }
 
     public func cancel() {
@@ -143,6 +148,11 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                 content: .dismissed  // Uses InteractionResponseContent factory
             ))
         }
+
+        if let continuation = authorizationContinuation {
+            authorizationContinuation = nil
+            continuation.resume(returning: .deny)
+        }
     }
 
     // MARK: - Protocol Conformance: User Interaction API
@@ -154,6 +164,15 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
     public func respond(_ response: InteractionResponse) {
         guard status.canRespond, let continuation = responseContinuation else { return }
         responseContinuation = nil
+        continuation.resume(returning: response)
+    }
+
+    // MARK: - Protocol Conformance: Authorization API
+
+    public func respondToAuthorization(_ response: ToolApprovalResponse) {
+        guard status.canRespondToAuthorization,
+              let continuation = authorizationContinuation else { return }
+        authorizationContinuation = nil
         continuation.resume(returning: response)
     }
 
@@ -339,6 +358,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         // TurnConfiguration からローカル変数に展開
         var tools = turn.tools
         var effectiveSystemPrompt = turn.systemPrompt
+        let executionPolicy = turn.executionPolicy
         // InteractiveTool の名前 → 実体マッピング（as? キャスト回避用）
         var interactiveToolMap: [String: any InteractiveTool] = [:]
         if let interactiveConfig = turn.interactiveTools {
@@ -521,21 +541,81 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                             }
                         }
 
-                        // 通常ツールを実行
-                        let toolResults: [ToolResponse]
-                        if regularCalls.count <= 1 {
-                            var results: [ToolResponse] = []
+                        // ポリシー評価 → 通常ツールを実行
+                        var approvedCalls: [ToolCall] = []
+                        var policyDeniedResults: [ToolResponse] = []
+
+                        if let policy = executionPolicy {
                             for call in regularCalls {
+                                // キャッシュチェック
+                                if await approvalCache.isApproved(call.name) {
+                                    approvedCalls.append(call)
+                                    continue
+                                }
+
+                                let decision = await policy.evaluate(call, tools: tools)
+                                switch decision {
+                                case .allow:
+                                    approvedCalls.append(call)
+
+                                case .deny(let reason):
+                                    let result = ToolResponse(
+                                        callId: call.id, name: call.name,
+                                        output: "Denied: \(reason)", isError: true
+                                    )
+                                    policyDeniedResults.append(result)
+                                    continuation.yield(.running(step: .toolResult(result)))
+
+                                case .requiresApproval(let request):
+                                    status = .awaitingAuthorization(request: request)
+                                    continuation.yield(.awaitingAuthorization(request: request))
+
+                                    let response = await withCheckedContinuation { cont in
+                                        self.authorizationContinuation = cont
+                                    }
+
+                                    guard status != .paused else {
+                                        continuation.yield(.paused)
+                                        continuation.finish()
+                                        return
+                                    }
+
+                                    status = .running
+
+                                    switch response {
+                                    case .allow:
+                                        approvedCalls.append(call)
+                                    case .allowForSession:
+                                        await approvalCache.approve(call.name)
+                                        approvedCalls.append(call)
+                                    case .deny:
+                                        let result = ToolResponse(
+                                            callId: call.id, name: call.name,
+                                            output: "Denied: User rejected the tool execution.", isError: true
+                                        )
+                                        policyDeniedResults.append(result)
+                                        continuation.yield(.running(step: .toolResult(result)))
+                                    }
+                                }
+                            }
+                        } else {
+                            approvedCalls = regularCalls
+                        }
+
+                        let toolResults: [ToolResponse]
+                        if approvedCalls.count <= 1 {
+                            var results: [ToolResponse] = []
+                            for call in approvedCalls {
                                 let result = await executeToolSafely(call, tools: tools)
                                 try Task.checkCancellation()
                                 results.append(result)
                                 continuation.yield(.running(step: .toolResult(result)))
                             }
-                            toolResults = results
+                            toolResults = results + policyDeniedResults
                         } else {
                             let toolSet = tools
-                            toolResults = await withTaskGroup(of: (Int, ToolResponse).self) { group in
-                                for (index, call) in regularCalls.enumerated() {
+                            let executed = await withTaskGroup(of: (Int, ToolResponse).self) { group in
+                                for (index, call) in approvedCalls.enumerated() {
                                     group.addTask {
                                         do {
                                             let result = try await toolSet.execute(
@@ -560,6 +640,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                 }
                                 return indexed.sorted(by: { $0.0 < $1.0 }).map(\.1)
                             }
+                            toolResults = executed + policyDeniedResults
                         }
 
                         if !toolResults.isEmpty {

@@ -56,6 +56,12 @@ public enum SessionPhase<Output: StructuredProtocol>: Sendable {
     /// `respond()` で応答するとランループが再開される。
     case awaitingInteraction(request: InteractionRequest)
 
+    /// ツール実行承認待ち
+    ///
+    /// ToolExecutionPolicy がユーザー承認を要求。
+    /// `respondToAuthorization()` で応答するとランループが再開される。
+    case awaitingAuthorization(request: ToolApprovalRequest)
+
     /// 一時停止（cancel後、再開可能）
     case paused
 
@@ -86,7 +92,7 @@ extension SessionPhase {
     /// `running` または `awaitingInteraction` の場合に `true`
     public var isActive: Bool {
         switch self {
-        case .running, .awaitingInteraction:
+        case .running, .awaitingInteraction, .awaitingAuthorization:
             return true
         default:
             return false
@@ -112,6 +118,14 @@ extension SessionPhase {
     /// インタラクション要求（awaitingInteraction の場合のみ）
     public var interactionRequest: InteractionRequest? {
         if case .awaitingInteraction(let request) = self {
+            return request
+        }
+        return nil
+    }
+
+    /// 承認リクエスト（awaitingAuthorization の場合のみ）
+    public var authorizationRequest: ToolApprovalRequest? {
+        if case .awaitingAuthorization(let request) = self {
             return request
         }
         return nil
@@ -155,6 +169,8 @@ extension SessionPhase: CustomStringConvertible {
             let truncated = request.prompt.prefix(30)
             let typeName = String(describing: type(of: request.payload.rawValue))
             return "awaitingInteraction(\(typeName): \(truncated)\(request.prompt.count > 30 ? "..." : ""))"
+        case .awaitingAuthorization(let request):
+            return "awaitingAuthorization(\(request.toolCall.name))"
         case .paused:
             return "paused"
         case .completed(let output):

@@ -74,6 +74,19 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
         self.fileManager = FileManager.default
     }
 
+    /// ワークスペースから初期化
+    ///
+    /// ワークスペースの `rootDirectory` を `allowedPaths` に、
+    /// `workingDirectory` をツールの作業ディレクトリに設定します。
+    ///
+    /// - Parameter workspace: ワークスペース
+    public convenience init(workspace: Workspace) {
+        self.init(
+            allowedPaths: [workspace.rootDirectory],
+            workingDirectory: workspace.workingDirectory
+        )
+    }
+
     /// デフォルトの作業ディレクトリ（Documents）
     private static var defaultWorkingDirectory: String {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.path

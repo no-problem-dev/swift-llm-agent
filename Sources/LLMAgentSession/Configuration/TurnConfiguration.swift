@@ -54,15 +54,25 @@ public struct TurnConfiguration: Sendable {
     /// `nil` の場合、インタラクティブモードは無効です。
     public var interactiveTools: InteractiveToolConfiguration?
 
+    /// ツール実行ポリシー
+    ///
+    /// 設定されている場合、各ツール呼び出しの実行前にポリシーが評価されます。
+    /// ポリシーがユーザー承認を要求した場合、ランループは suspend し、
+    /// UI が `respondToAuthorization()` を呼ぶまで待機します。
+    /// `nil` の場合、全ツール呼び出しが無条件で実行されます。
+    public var executionPolicy: (any ToolExecutionPolicy)?
+
     public init(
         systemPrompt: SystemPrompt? = nil,
         tools: ToolSet = ToolSet {},
         agentConfiguration: AgentConfiguration = .default,
-        interactiveTools: InteractiveToolConfiguration? = nil
+        interactiveTools: InteractiveToolConfiguration? = nil,
+        executionPolicy: (any ToolExecutionPolicy)? = nil
     ) {
         self.systemPrompt = systemPrompt
         self.tools = tools
         self.agentConfiguration = agentConfiguration
         self.interactiveTools = interactiveTools
+        self.executionPolicy = executionPolicy
     }
 }

@@ -75,8 +75,8 @@ public actor InteractiveAgentSession<Client: AgentCapableClient>: ChatSessionPro
 
     // MARK: - ChatSessionProtocol: Core Operations
 
-    public func send(_ text: String) async -> AsyncThrowingStream<SessionPhaseEvent, Error> {
-        let innerStream = await inner.send(text)
+    public func send(_ input: LLMInput) async -> AsyncThrowingStream<SessionPhaseEvent, Error> {
+        let innerStream = await inner.send(input)
         return wrapWithDirective(innerStream)
     }
 
@@ -100,6 +100,10 @@ public actor InteractiveAgentSession<Client: AgentCapableClient>: ChatSessionPro
 
         // Layer 1: inner session にフォワード
         await inner.respond(response)
+    }
+
+    public func respondToAuthorization(_ response: ToolApprovalResponse) async {
+        await inner.respondToAuthorization(response)
     }
 
     public func interrupt(_ message: String) async {
@@ -261,7 +265,7 @@ public actor InteractiveAgentSession<Client: AgentCapableClient>: ChatSessionPro
             continuation.yield(.completed(result: result))
         } else if !response.content.textValue.isEmpty {
             // アクション or テキスト入力 → 新ターンを開始
-            let newStream = await inner.send(response.content.textValue)
+            let newStream = await inner.send(LLMInput(response.content.textValue))
             do {
                 for try await event in newStream {
                     if Task.isCancelled { break }

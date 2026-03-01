@@ -31,6 +31,11 @@ public enum SessionPhaseEvent: Sendable {
     /// `ask_user` を含む全てのインタラクティブツールがこのイベントを使用する。
     case awaitingInteraction(request: InteractionRequest)
 
+    /// ツール実行承認待ち（ToolExecutionPolicy 起因）
+    ///
+    /// ポリシーがユーザー承認を要求した場合に使用する。
+    case awaitingAuthorization(request: ToolApprovalRequest)
+
     /// 一時停止
     case paused
 

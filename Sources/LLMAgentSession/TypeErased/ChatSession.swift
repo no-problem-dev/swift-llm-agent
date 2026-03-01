@@ -150,13 +150,13 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
 
     // MARK: - ChatSessionProtocol: Core Operations
 
-    public func send(_ text: String) -> AsyncThrowingStream<SessionPhaseEvent, Error> {
+    public func send(_ input: LLMInput) -> AsyncThrowingStream<SessionPhaseEvent, Error> {
         guard let model = modelRegistry[currentModelId_],
               let runner = outputRunnerRegistry[currentOutputTypeId_] else {
             return AsyncThrowingStream { $0.finish(throwing: ChatSessionError.configurationMissing) }
         }
         let config = turnConfig_
-        return runner.run(session, LLMInput(text), model, config)
+        return runner.run(session, input, model, config)
     }
 
     public func sendWithPrefill(_ prefill: [LLMMessage]) -> AsyncThrowingStream<SessionPhaseEvent, Error> {
@@ -179,6 +179,10 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
 
     public func respond(_ response: InteractionResponse) async {
         await session.respond(response)
+    }
+
+    public func respondToAuthorization(_ response: ToolApprovalResponse) async {
+        await session.respondToAuthorization(response)
     }
 
     public func interrupt(_ message: String) async {
@@ -311,6 +315,8 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
             mapStep(step)
         case .awaitingInteraction(let request):
             .awaitingInteraction(request: request)
+        case .awaitingAuthorization(let request):
+            .awaitingAuthorization(request: request)
         case .paused:
             .paused
         case .completed(let output):

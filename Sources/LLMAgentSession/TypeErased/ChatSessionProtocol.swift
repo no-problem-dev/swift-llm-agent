@@ -34,7 +34,7 @@ public protocol ChatSessionProtocol: Sendable {
     // MARK: - Core Operations
 
     /// メッセージを送信してフェーズイベントのストリームを返す
-    func send(_ text: String) async -> AsyncThrowingStream<SessionPhaseEvent, Error>
+    func send(_ input: LLMInput) async -> AsyncThrowingStream<SessionPhaseEvent, Error>
 
     /// プリフィルメッセージを注入してフェーズイベントのストリームを返す
     func sendWithPrefill(_ prefill: [LLMMessage]) async -> AsyncThrowingStream<SessionPhaseEvent, Error>
@@ -44,6 +44,9 @@ public protocol ChatSessionProtocol: Sendable {
 
     /// インタラクション応答を送信
     func respond(_ response: InteractionResponse) async
+
+    /// ツール実行承認に応答
+    func respondToAuthorization(_ response: ToolApprovalResponse) async
 
     /// 実行中に割り込みメッセージを送信
     func interrupt(_ message: String) async

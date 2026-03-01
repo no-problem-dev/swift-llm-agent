@@ -71,6 +71,13 @@ public protocol ConversationalAgentSessionProtocol<Client>: Actor {
     var waitingForResponse: Bool { get async }
     func respond(_ response: InteractionResponse) async
 
+    // MARK: - Authorization API
+
+    /// ツール実行承認に応答
+    ///
+    /// `ToolExecutionPolicy` がユーザー承認を要求した場合に呼び出します。
+    func respondToAuthorization(_ response: ToolApprovalResponse) async
+
     // MARK: - Core API
 
     /// LLM入力を送信してエージェントループを実行
