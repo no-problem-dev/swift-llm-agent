@@ -13,6 +13,21 @@ struct NotificationPermission: PermissionProvider, Sendable {
         .notDetermined
     }
 
+    func resolvedStatus() async -> PermissionStatus {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+
+        switch settings.authorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            return .authorized
+        case .denied:
+            return .denied
+        case .notDetermined:
+            return .notDetermined
+        @unknown default:
+            return .denied
+        }
+    }
+
     func requestAuthorization() async throws -> PermissionStatus {
         let center = UNUserNotificationCenter.current()
         let settings = await center.notificationSettings()

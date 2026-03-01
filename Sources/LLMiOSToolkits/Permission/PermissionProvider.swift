@@ -28,9 +28,21 @@ public protocol PermissionProvider: Sendable {
     /// 現在の認可状態を同期的に確認
     func currentStatus() -> PermissionStatus
 
+    /// 現在の認可状態を可能な限り正確に確認
+    ///
+    /// 非同期 API が必要なフレームワーク（例: 通知）向け。
+    /// デフォルトでは ``currentStatus()`` をそのまま返します。
+    func resolvedStatus() async -> PermissionStatus
+
     /// 認可をリクエスト
     ///
     /// `.notDetermined` の場合にシステムダイアログを表示します。
     /// すでに判断済みの場合は現在の状態をそのまま返します。
     func requestAuthorization() async throws -> PermissionStatus
+}
+
+public extension PermissionProvider {
+    func resolvedStatus() async -> PermissionStatus {
+        currentStatus()
+    }
 }

@@ -29,7 +29,7 @@ public struct PermissionGuard: Sendable {
     ///
     /// - Returns: `nil`（認可済み）または `ToolResult.error`（拒否・制限）
     public func ensureAuthorized() async -> ToolResult? {
-        switch provider.currentStatus() {
+        switch await provider.resolvedStatus() {
         case .authorized:
             return nil
         case .notDetermined:

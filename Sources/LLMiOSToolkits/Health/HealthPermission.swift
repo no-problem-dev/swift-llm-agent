@@ -26,6 +26,26 @@ struct HealthPermission: PermissionProvider, @unchecked Sendable {
         return .notDetermined
     }
 
+    func resolvedStatus() async -> PermissionStatus {
+        let current = currentStatus()
+        guard current != .restricted else { return current }
+
+        if let sampleType = writeTypes.first {
+            switch healthStore.authorizationStatus(for: sampleType) {
+            case .sharingAuthorized:
+                return .authorized
+            case .sharingDenied:
+                return .denied
+            case .notDetermined:
+                return .notDetermined
+            @unknown default:
+                return .denied
+            }
+        }
+
+        return .notDetermined
+    }
+
     func requestAuthorization() async throws -> PermissionStatus {
         guard HKHealthStore.isHealthDataAvailable() else {
             return .restricted

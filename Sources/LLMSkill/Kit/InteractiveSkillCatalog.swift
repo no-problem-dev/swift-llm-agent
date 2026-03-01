@@ -16,6 +16,7 @@ enum InteractiveSkillCatalog {
         "meeting_prep_light",
         "capture_to_tasks",
         "context_restart",
+        "session_recall",
     ]
 
     static func loadInteractiveSkills() -> [AgentSkillDefinition] {
