@@ -19,8 +19,8 @@ struct LLMmacOSToolkitsTests {
     func macClipboardToolKitToolCount() {
         let toolkit = MacClipboardToolKit()
         #expect(toolkit.tools.count == 2)
-        #expect(toolkit.toolNames.contains("get_clipboard"))
-        #expect(toolkit.toolNames.contains("set_clipboard"))
+        #expect(toolkit.toolNames.contains("mac_get_clipboard"))
+        #expect(toolkit.toolNames.contains("mac_set_clipboard"))
     }
 
     // MARK: - AppControlToolKit

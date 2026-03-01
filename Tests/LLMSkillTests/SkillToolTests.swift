@@ -251,12 +251,12 @@ import LLMAgent
         )
     }
 
-    let bgRegistry = BackgroundTaskRegistry()
+    let service = SubAgentTaskService(client: MockAgentClient())
     let tool = SkillTool(
         client: MockAgentClient(),
         modelResolver: { _ in "test-model" },
         registry: registry,
-        backgroundTaskRegistry: bgRegistry
+        taskService: service
     )
 
     let schema = tool.inputSchema
@@ -301,16 +301,16 @@ import LLMAgent
         )
     }
 
-    let bgRegistry = BackgroundTaskRegistry()
+    let service = SubAgentTaskService(client: MockAgentClient())
     let tool = SkillTool(
         client: MockAgentClient(),
         modelResolver: { _ in "test-model" },
         registry: registry,
-        backgroundTaskRegistry: bgRegistry
+        taskService: service
     )
 
     #expect(tool.toolDescription.contains("run_in_background"))
-    #expect(tool.toolDescription.contains("task_output"))
+    #expect(tool.toolDescription.contains("wait_task"))
 }
 
 @Test func testBackgroundExecutionReturnsTaskId() async throws {
@@ -323,12 +323,12 @@ import LLMAgent
         )
     }
 
-    let bgRegistry = BackgroundTaskRegistry()
+    let service = SubAgentTaskService(client: MockAgentClient())
     let tool = SkillTool(
         client: MockAgentClient(),
         modelResolver: { _ in "test-model" },
         registry: registry,
-        backgroundTaskRegistry: bgRegistry
+        taskService: service
     )
 
     let args: [String: Any] = [
@@ -340,10 +340,10 @@ import LLMAgent
     let result = try await tool.execute(with: data)
 
     #expect(!result.isError)
-    #expect(result.stringValue.contains("Background skill started"))
     #expect(result.stringValue.contains("task_id:"))
+    #expect(result.stringValue.contains("status:"))
 
-    let tasks = await bgRegistry.listTasks()
+    let tasks = await service.listTasks()
     #expect(tasks.count == 1)
     #expect(tasks[0].agentType == "skill:research")
 }

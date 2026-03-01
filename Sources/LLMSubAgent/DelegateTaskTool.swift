@@ -42,9 +42,7 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
     private let client: Client
     private let modelResolver: ModelTierResolver<Client.Model>
     private let catalog: any SubAgentCatalog
-    private let timeout: Duration?
-    private let eventHandler: SubAgentEventHandler?
-    private let backgroundTaskRegistry: BackgroundTaskRegistry?
+    private let taskService: SubAgentTaskService<Client>?
 
     // MARK: - Initialization
 
@@ -54,23 +52,17 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
     ///   - client: LLM クライアント
     ///   - modelResolver: モデルティアを具体的なモデルに解決するクロージャ
     ///   - catalog: サブエージェントタイプのカタログ
-    ///   - timeout: タイムアウト（オプション）
-    ///   - eventHandler: イベントハンドラー（オプション）
-    ///   - backgroundTaskRegistry: バックグラウンドタスクレジストリ（nil の場合バックグラウンド実行無効）
+    ///   - taskService: バックグラウンドタスク制御サービス（nil の場合、バックグラウンド実行なし）
     public init(
         client: Client,
         modelResolver: @escaping ModelTierResolver<Client.Model>,
         catalog: any SubAgentCatalog,
-        timeout: Duration? = nil,
-        eventHandler: SubAgentEventHandler? = nil,
-        backgroundTaskRegistry: BackgroundTaskRegistry? = nil
+        taskService: SubAgentTaskService<Client>? = nil
     ) {
         self.client = client
         self.modelResolver = modelResolver
         self.catalog = catalog
-        self.timeout = timeout
-        self.eventHandler = eventHandler
-        self.backgroundTaskRegistry = backgroundTaskRegistry
+        self.taskService = taskService
     }
 
     // MARK: - Tool Protocol
@@ -82,9 +74,9 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
             + "Choose an agent_type from the available types and provide a detailed prompt "
             + "describing what the sub-agent should do.\n\n"
 
-        if backgroundTaskRegistry != nil {
+        if taskService != nil {
             desc += "Set run_in_background to true to run the task in the background. "
-                + "Use the task_output tool to retrieve results later.\n\n"
+                + "Use wait_task, resume_task, cancel_task, or list_tasks to control it later.\n\n"
         }
 
         desc += "Available agent types:\n"
@@ -110,13 +102,25 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
                 description: "The type of sub-agent to use. "
                     + "Each type has different tools and capabilities."
             ),
+            "timeout_seconds": .integer(
+                description: "Wall-clock timeout in seconds for the delegated task (1-1800)."
+            ),
+            "max_steps": .integer(
+                description: "Optional step budget override for the delegated task."
+            ),
         ]
 
-        if backgroundTaskRegistry != nil {
+        if taskService != nil {
             properties["run_in_background"] = .boolean(
                 description: "Set to true to run the task in the background. "
                     + "The tool will return immediately with a task_id. "
-                    + "Use the task_output tool to retrieve the result later."
+                    + "Use task control tools to inspect or resume it later."
+            )
+            properties["max_attempts"] = .integer(
+                description: "Maximum number of background attempts before the task becomes failed."
+            )
+            properties["await_timeout_seconds"] = .integer(
+                description: "If set when running in background, wait this many seconds for a state change before returning."
             )
         }
 
@@ -152,68 +156,114 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
         let model = modelResolver(agentType.modelTier)
 
         // バックグラウンド実行
-        if args.runInBackground == true, let registry = backgroundTaskRegistry {
-            await eventHandler?(
-                .backgroundTaskRegistered(
-                    taskId: taskId,
-                    agentType: args.agentType,
-                    description: args.description
-                )
-            )
-
-            let backgroundConfig = agentType.configuration.forBackground
-            let taskHandle = Task<Void, Never> {
-                do {
-                    let result = try await SubAgentRunner.run(
-                        client: self.client,
-                        model: model,
-                        prompt: args.prompt,
-                        tools: agentType.tools,
-                        systemPrompt: agentType.systemPrompt,
-                        configuration: backgroundConfig,
-                        timeout: self.timeout,
-                        taskId: taskId,
-                        eventHandler: self.eventHandler
-                    )
-                    await registry.markCompleted(taskId: taskId, result: result)
-                    await self.eventHandler?(.completed(taskId: taskId, result: result))
-                } catch {
-                    let message = error.localizedDescription
-                    await registry.markFailed(taskId: taskId, error: message)
-                    await self.eventHandler?(.failed(taskId: taskId, error: error))
-                }
-            }
-
-            await registry.register(
-                taskId: taskId,
+        if args.runInBackground == true, let taskService {
+            let info = await taskService.startTask(
                 agentType: args.agentType,
                 description: args.description,
-                taskHandle: taskHandle
-            )
-
-            return .text("Background task started. task_id: \(taskId.uuidString)")
-        }
-
-        // フォアグラウンド実行
-        await eventHandler?(.started(taskId: taskId, agentType: args.agentType, description: args.description))
-
-        do {
-            let result = try await SubAgentRunner.run(
-                client: client,
-                model: model,
                 prompt: args.prompt,
+                model: model,
                 tools: agentType.tools,
                 systemPrompt: agentType.systemPrompt,
                 configuration: agentType.configuration,
-                timeout: timeout,
-                taskId: taskId,
-                eventHandler: eventHandler
+                timeout: parsedTimeout(args.timeoutSeconds),
+                maxStepsOverride: args.maxSteps,
+                maxAttempts: args.maxAttempts ?? 2
             )
+
+            if let awaitTimeout = args.awaitTimeoutSeconds, awaitTimeout > 0,
+               let updated = await taskService.waitForTask(
+                   id: info.id,
+                   timeout: .seconds(min(awaitTimeout, 300))
+               ) {
+                return .text(renderTaskInfo(updated))
+            }
+
+            return .text(renderTaskInfo(info))
+        }
+
+        // フォアグラウンド実行
+        do {
+            let result: String
+            if let taskService {
+                result = try await taskService.runForeground(
+                    agentType: args.agentType,
+                    description: args.description,
+                    prompt: args.prompt,
+                    model: model,
+                    tools: agentType.tools,
+                    systemPrompt: agentType.systemPrompt,
+                    configuration: applyMaxStepsOverride(args.maxSteps, to: agentType.configuration),
+                    timeout: parsedTimeout(args.timeoutSeconds)
+                )
+            } else {
+                let run = try await SubAgentRunner.run(
+                    client: client,
+                    model: model,
+                    messages: [.user(args.prompt)],
+                    tools: agentType.tools,
+                    systemPrompt: agentType.systemPrompt,
+                    configuration: applyMaxStepsOverride(args.maxSteps, to: agentType.configuration),
+                    timeout: parsedTimeout(args.timeoutSeconds),
+                    taskId: taskId,
+                    eventHandler: nil
+                )
+                result = run.output
+            }
             return .text(result)
         } catch {
-            await eventHandler?(.failed(taskId: taskId, error: error))
             return .error("Sub-agent failed: \(error.localizedDescription)")
         }
+    }
+}
+
+private extension DelegateTaskTool {
+    func parsedTimeout(_ timeoutSeconds: Int?) -> Duration? {
+        guard let timeoutSeconds, timeoutSeconds > 0 else { return nil }
+        return .seconds(min(timeoutSeconds, 1800))
+    }
+
+    func applyMaxStepsOverride(_ maxSteps: Int?, to configuration: AgentConfiguration) -> AgentConfiguration {
+        guard let maxSteps, maxSteps > 0 else { return configuration }
+        return AgentConfiguration(
+            maxSteps: maxSteps,
+            softMaxSteps: max(1, maxSteps - 2),
+            autoExecuteTools: configuration.autoExecuteTools,
+            maxDuplicateToolCalls: configuration.maxDuplicateToolCalls,
+            maxToolCallsPerTool: configuration.maxToolCallsPerTool,
+            maxInteractiveCalls: configuration.maxInteractiveCalls,
+            thinkingMode: configuration.thinkingMode,
+            skipFinalOutput: configuration.skipFinalOutput
+        )
+    }
+
+    func renderTaskInfo(_ info: SubAgentTaskInfo) -> String {
+        var lines = [
+            "task_id: \(info.id.uuidString)",
+            "agent_type: \(info.agentType)",
+            "description: \(info.description)",
+            "attempt: \(info.attempt)/\(info.maxAttempts)",
+        ]
+
+        switch info.status {
+        case .queued:
+            lines.append("status: queued")
+        case .running:
+            lines.append("status: running")
+        case .paused(let reason, let note):
+            lines.append("status: paused")
+            lines.append("pause_reason: \(reason.rawValue)")
+            lines.append("note: \(note)")
+        case .completed(let result):
+            lines.append("status: completed")
+            lines.append("result: \(result)")
+        case .failed(let message):
+            lines.append("status: failed")
+            lines.append("error: \(message)")
+        case .cancelled:
+            lines.append("status: cancelled")
+        }
+
+        return lines.joined(separator: "\n")
     }
 }
 
@@ -225,5 +275,9 @@ extension DelegateTaskTool {
         let description: String
         let agentType: String
         let runInBackground: Bool?
+        let timeoutSeconds: Int?
+        let maxSteps: Int?
+        let maxAttempts: Int?
+        let awaitTimeoutSeconds: Int?
     }
 }

@@ -10,6 +10,6 @@ import LLMClient
     let config = AgentConfiguration.default
     #expect(config.maxSteps == 10)
     #expect(config.autoExecuteTools == true)
-    #expect(config.maxDuplicateToolCalls == 2)
+    #expect(config.maxDuplicateToolCalls == 1)
     #expect(config.maxToolCallsPerTool == 5)
 }

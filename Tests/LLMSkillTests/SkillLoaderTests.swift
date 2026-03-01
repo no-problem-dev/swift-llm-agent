@@ -227,6 +227,7 @@ import LLMAgent
         name: translate
         description: Translates text
         context: fork
+        allowed-tools: [translate_text]
         ---
 
         Translate the given text.

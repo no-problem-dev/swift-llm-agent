@@ -3,6 +3,24 @@ import LLMClient
 import LLMTool
 import LLMAgent
 
+package struct SubAgentRunResult: Sendable {
+    package let output: String
+    package let messages: [LLMMessage]
+}
+
+package enum SubAgentRunInterruption: Error, Sendable {
+    case timedOut(messages: [LLMMessage])
+    case stepLimitExceeded(messages: [LLMMessage])
+    case cancelled(messages: [LLMMessage])
+
+    package var messages: [LLMMessage] {
+        switch self {
+        case .timedOut(let messages), .stepLimitExceeded(let messages), .cancelled(let messages):
+            messages
+        }
+    }
+}
+
 // MARK: - SubAgentRunner
 
 /// サブエージェント実行エンジン
@@ -27,49 +45,25 @@ package enum SubAgentRunner {
     package static func run<Client: AgentCapableClient>(
         client: Client,
         model: Client.Model,
-        prompt: String,
+        messages: [LLMMessage],
         tools: ToolSet,
         systemPrompt: SystemPrompt?,
         configuration: AgentConfiguration,
         timeout: Duration?,
         taskId: UUID,
         eventHandler: SubAgentEventHandler?
-    ) async throws -> String where Client.Model: Sendable {
-        if let timeout {
-            return try await withThrowingTaskGroup(of: String.self) { group in
-                group.addTask {
-                    try await executeLoop(
-                        client: client,
-                        model: model,
-                        prompt: prompt,
-                        tools: tools,
-                        systemPrompt: systemPrompt,
-                        configuration: configuration,
-                        taskId: taskId,
-                        eventHandler: eventHandler
-                    )
-                }
-                group.addTask {
-                    try await Task.sleep(for: timeout)
-                    throw SubAgentError.timeout(timeout)
-                }
-
-                let result = try await group.next()!
-                group.cancelAll()
-                return result
-            }
-        } else {
-            return try await executeLoop(
-                client: client,
-                model: model,
-                prompt: prompt,
-                tools: tools,
-                systemPrompt: systemPrompt,
-                configuration: configuration,
-                taskId: taskId,
-                eventHandler: eventHandler
-            )
-        }
+    ) async throws -> SubAgentRunResult where Client.Model: Sendable {
+        try await executeLoop(
+            client: client,
+            model: model,
+            initialMessages: messages,
+            tools: tools,
+            systemPrompt: systemPrompt,
+            configuration: configuration,
+            timeout: timeout,
+            taskId: taskId,
+            eventHandler: eventHandler
+        )
     }
 
     // MARK: - Private
@@ -77,20 +71,22 @@ package enum SubAgentRunner {
     private static func executeLoop<Client: AgentCapableClient>(
         client: Client,
         model: Client.Model,
-        prompt: String,
+        initialMessages: [LLMMessage],
         tools: ToolSet,
         systemPrompt: SystemPrompt?,
         configuration: AgentConfiguration,
+        timeout: Duration?,
         taskId: UUID,
         eventHandler: SubAgentEventHandler?
-    ) async throws -> String where Client.Model: Sendable {
-        var messages: [LLMMessage] = [LLMMessage.user(prompt)]
+    ) async throws -> SubAgentRunResult where Client.Model: Sendable {
+        var messages = initialMessages
         var step = 0
         let maxSteps = configuration.maxSteps
         let softMaxSteps = configuration.softMaxSteps
+        let deadline = timeout.map { ContinuousClock.now + $0 }
 
         while step < maxSteps {
-            try Task.checkCancellation()
+            try checkForCancellation(messages: messages)
             step += 1
 
             // ソフトリミット注入
@@ -107,21 +103,28 @@ package enum SubAgentRunner {
 
             // LLM 呼び出し
             let response: LLMResponse
+            let requestMessages = messages
             do {
-                response = try await client.executeAgentStep(
-                    messages: messages,
-                    model: model,
-                    systemPrompt: systemPrompt,
-                    tools: tools,
-                    toolChoice: tools.isEmpty ? nil : .auto,
-                    responseSchema: nil,
-                    maxTokens: nil
+                response = try await runWithinDeadline(
+                    deadline: deadline,
+                    messages: requestMessages,
+                    operation: {
+                    try await client.executeAgentStep(
+                        messages: requestMessages,
+                        model: model,
+                        systemPrompt: systemPrompt,
+                        tools: tools,
+                        toolChoice: tools.isEmpty ? nil : .auto,
+                        responseSchema: nil,
+                        maxTokens: nil
+                    )
+                    }
                 )
             } catch let error as LLMError {
                 throw SubAgentError.llmError(error)
             }
 
-            try Task.checkCancellation()
+            try checkForCancellation(messages: messages)
             appendAssistantResponse(response, to: &messages)
 
             // ツール呼び出しの抽出
@@ -134,42 +137,39 @@ package enum SubAgentRunner {
                     throw SubAgentError.emptyResponse
                 }
                 await eventHandler?(.completed(taskId: taskId, result: text))
-                return text
+                return SubAgentRunResult(output: text, messages: messages)
             }
 
-            // ツール実行（2件以上は並列）
-            let toolResults: [ToolResponse]
-            if toolCalls.count <= 1 {
-                var results: [ToolResponse] = []
-                for call in toolCalls {
-                    await eventHandler?(.toolCall(taskId: taskId, call))
-                    let result = await executeToolSafely(call, tools: tools)
-                    try Task.checkCancellation()
-                    results.append(result)
-                    await eventHandler?(.toolResult(taskId: taskId, result))
-                }
-                toolResults = results
-            } else {
-                // 全ツールコールイベントを先行発火
-                for call in toolCalls {
-                    await eventHandler?(.toolCall(taskId: taskId, call))
-                }
-                // 並列実行
-                let capturedTools = tools
-                toolResults = await withTaskGroup(of: (Int, ToolResponse).self) { group in
-                    for (index, call) in toolCalls.enumerated() {
-                        group.addTask {
-                            let result = await executeToolSafely(call, tools: capturedTools)
-                            return (index, result)
-                        }
+            // ツール実行は逐次に限定し、各呼び出しでチェックポイントを残す
+            var toolResults: [ToolResponse] = []
+            for call in toolCalls {
+                await eventHandler?(.toolCall(taskId: taskId, call))
+                let checkpointMessages = messages
+                let result = try await runWithinDeadline(
+                    deadline: deadline,
+                    messages: checkpointMessages,
+                    operation: {
+                    do {
+                        let toolResult = try await tools.execute(toolNamed: call.name, with: call.arguments)
+                        return ToolResponse(
+                            callId: call.id,
+                            name: call.name,
+                            output: toolResult.stringValue,
+                            isError: toolResult.isError
+                        )
+                    } catch {
+                        return ToolResponse(
+                            callId: call.id,
+                            name: call.name,
+                            output: "Error: \(error.localizedDescription)",
+                            isError: true
+                        )
                     }
-                    var indexed: [(Int, ToolResponse)] = []
-                    for await pair in group {
-                        await eventHandler?(.toolResult(taskId: taskId, pair.1))
-                        indexed.append(pair)
                     }
-                    return indexed.sorted(by: { $0.0 < $1.0 }).map(\.1)
-                }
+                )
+                try checkForCancellation(messages: messages)
+                toolResults.append(result)
+                await eventHandler?(.toolResult(taskId: taskId, result))
             }
 
             if !toolResults.isEmpty {
@@ -181,10 +181,10 @@ package enum SubAgentRunner {
         let lastText = extractLastAssistantText(from: messages)
         if !lastText.isEmpty {
             await eventHandler?(.completed(taskId: taskId, result: lastText))
-            return lastText
+            return SubAgentRunResult(output: lastText, messages: messages)
         }
 
-        throw SubAgentError.maxStepsExceeded(steps: maxSteps)
+        throw SubAgentRunInterruption.stepLimitExceeded(messages: messages)
     }
 
     // MARK: - Message Helpers
@@ -252,22 +252,40 @@ package enum SubAgentRunner {
         }.joined()
     }
 
-    private static func executeToolSafely(_ call: ToolCall, tools: ToolSet) async -> ToolResponse {
+    private static func runWithinDeadline<T: Sendable>(
+        deadline: ContinuousClock.Instant?,
+        messages: [LLMMessage],
+        operation: @Sendable @escaping () async throws -> T
+    ) async throws -> T {
+        guard let deadline else {
+            return try await operation()
+        }
+
+        let remaining = deadline - ContinuousClock.now
+        if remaining <= .zero {
+            throw SubAgentRunInterruption.timedOut(messages: messages)
+        }
+
+        return try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await operation()
+            }
+            group.addTask {
+                try await Task.sleep(for: remaining)
+                throw SubAgentRunInterruption.timedOut(messages: messages)
+            }
+
+            let value = try await group.next()!
+            group.cancelAll()
+            return value
+        }
+    }
+
+    private static func checkForCancellation(messages: [LLMMessage]) throws {
         do {
-            let result = try await tools.execute(toolNamed: call.name, with: call.arguments)
-            return ToolResponse(
-                callId: call.id,
-                name: call.name,
-                output: result.stringValue,
-                isError: result.isError
-            )
+            try Task.checkCancellation()
         } catch {
-            return ToolResponse(
-                callId: call.id,
-                name: call.name,
-                output: "Error: \(error.localizedDescription)",
-                isError: true
-            )
+            throw SubAgentRunInterruption.cancelled(messages: messages)
         }
     }
 }

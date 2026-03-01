@@ -20,8 +20,14 @@ public enum SubAgentEvent: Sendable {
     /// サブエージェントが正常完了
     case completed(taskId: UUID, result: String)
 
+    /// サブエージェントが一時停止した
+    case paused(taskId: UUID, reason: SubAgentTaskPauseReason, note: String)
+
     /// サブエージェントがエラーで終了
     case failed(taskId: UUID, error: any Error)
+
+    /// サブエージェントがキャンセルされた
+    case cancelled(taskId: UUID)
 
     /// バックグラウンドタスクとして登録された
     case backgroundTaskRegistered(taskId: UUID, agentType: String, description: String)

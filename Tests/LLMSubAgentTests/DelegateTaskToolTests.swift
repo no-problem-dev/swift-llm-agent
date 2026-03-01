@@ -150,12 +150,12 @@ import LLMAgent
         SubAgentTypeDefinition(name: "researcher", description: "Research agent")
     }
 
-    let registry = BackgroundTaskRegistry()
+    let service = SubAgentTaskService(client: MockAgentClient())
     let tool = DelegateTaskTool(
         client: MockAgentClient(),
         modelResolver: { _ in "test-model" },
         catalog: catalog,
-        backgroundTaskRegistry: registry
+        taskService: service
     )
 
     let schema = tool.inputSchema
@@ -190,16 +190,16 @@ import LLMAgent
         SubAgentTypeDefinition(name: "researcher", description: "Research agent")
     }
 
-    let registry = BackgroundTaskRegistry()
+    let service = SubAgentTaskService(client: MockAgentClient())
     let tool = DelegateTaskTool(
         client: MockAgentClient(),
         modelResolver: { _ in "test-model" },
         catalog: catalog,
-        backgroundTaskRegistry: registry
+        taskService: service
     )
 
     #expect(tool.toolDescription.contains("run_in_background"))
-    #expect(tool.toolDescription.contains("task_output"))
+    #expect(tool.toolDescription.contains("wait_task"))
 }
 
 @Test func testBackgroundExecutionReturnsTaskId() async throws {
@@ -207,12 +207,12 @@ import LLMAgent
         SubAgentTypeDefinition(name: "researcher", description: "Research agent")
     }
 
-    let registry = BackgroundTaskRegistry()
+    let service = SubAgentTaskService(client: MockAgentClient())
     let tool = DelegateTaskTool(
         client: MockAgentClient(),
         modelResolver: { _ in "test-model" },
         catalog: catalog,
-        backgroundTaskRegistry: registry
+        taskService: service
     )
 
     let args: [String: Any] = [
@@ -225,11 +225,10 @@ import LLMAgent
     let result = try await tool.execute(with: data)
 
     #expect(!result.isError)
-    #expect(result.stringValue.contains("Background task started"))
     #expect(result.stringValue.contains("task_id:"))
+    #expect(result.stringValue.contains("status:"))
 
-    // Registry にタスクが登録されている
-    let tasks = await registry.listTasks()
+    let tasks = await service.listTasks()
     #expect(tasks.count == 1)
     #expect(tasks[0].agentType == "researcher")
 }
