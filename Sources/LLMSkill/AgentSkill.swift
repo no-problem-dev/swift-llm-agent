@@ -80,6 +80,12 @@ public protocol AgentSkill: Sendable {
 
     // MARK: - Optional (Invocation Control)
 
+    /// スキルの利用可能性（required = 常時有効, optional = 任意有効）
+    ///
+    /// `required`: レジストリに含まれる限り常に有効。UI でトグル不可。
+    /// `optional`: デフォルト無効。ユーザーが明示的に有効化する。
+    var availability: SkillAvailability { get }
+
     /// ユーザーが直接呼び出し可能か（例: UI のコマンドリストに表示）
     var isUserInvocable: Bool { get }
 
@@ -119,6 +125,7 @@ extension AgentSkill {
     public var tools: ToolSet { ToolSet() }
     public var systemPrompt: SystemPrompt? { nil }
     public var configuration: AgentConfiguration { .default }
+    public var availability: SkillAvailability { .required }
     public var isUserInvocable: Bool { true }
     public var displayName: String { name }
     public var iconName: String { "sparkles" }
@@ -156,6 +163,7 @@ public struct AgentSkillDefinition: AgentSkill {
     public let tools: ToolSet
     public let systemPrompt: SystemPrompt?
     public let configuration: AgentConfiguration
+    public let availability: SkillAvailability
     public let displayName: String
     public let iconName: String
     public let category: String?
@@ -175,6 +183,7 @@ public struct AgentSkillDefinition: AgentSkill {
         tools: ToolSet = ToolSet(),
         systemPrompt: SystemPrompt? = nil,
         configuration: AgentConfiguration = .default,
+        availability: SkillAvailability = .required,
         displayName: String? = nil,
         iconName: String = "sparkles",
         category: String? = nil,
@@ -193,6 +202,7 @@ public struct AgentSkillDefinition: AgentSkill {
         self.tools = tools
         self.systemPrompt = systemPrompt
         self.configuration = configuration
+        self.availability = availability
         self.displayName = displayName ?? name
         self.iconName = iconName
         self.category = category
@@ -225,6 +235,7 @@ public struct AgentSkillDefinition: AgentSkill {
         allowedTools: [String]? = nil,
         systemPrompt: SystemPrompt? = nil,
         configuration: AgentConfiguration = .default,
+        availability: SkillAvailability = .required,
         displayName: String? = nil,
         iconName: String = "sparkles",
         category: String? = nil,
@@ -244,6 +255,7 @@ public struct AgentSkillDefinition: AgentSkill {
         self.tools = ToolSet(tools)
         self.systemPrompt = systemPrompt
         self.configuration = configuration
+        self.availability = availability
         self.displayName = displayName ?? name
         self.iconName = iconName
         self.category = category

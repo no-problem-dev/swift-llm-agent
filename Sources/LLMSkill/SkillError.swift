@@ -22,6 +22,9 @@ public enum SkillError: Error, Sendable {
     /// fork スキルに allowed-tools が指定されていない
     case missingAllowedToolsForFork(String)
 
+    /// 無効な availability 値
+    case invalidAvailability(String)
+
     /// ファイル読み込みエラー
     case fileLoadError(URL, any Error)
 }
@@ -43,6 +46,8 @@ extension SkillError: LocalizedError {
             "Invalid model-tier: \"\(value)\". Use 1/2/3 or light/standard/powerful"
         case .missingAllowedToolsForFork(let name):
             "Fork-mode skill \"\(name)\" must specify allowed-tools for tool permission isolation"
+        case .invalidAvailability(let value):
+            "Invalid availability: \"\(value)\". Use \"required\" or \"optional\""
         case .fileLoadError(let url, let error):
             "Failed to load \(url.lastPathComponent): \(error.localizedDescription)"
         }

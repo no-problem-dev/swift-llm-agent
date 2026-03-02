@@ -50,6 +50,16 @@ extension SkillRegistry {
     public var userInvocableSkills: [any AgentSkill] {
         skills.filter(\.isUserInvocable)
     }
+
+    /// 常時有効なスキルのみをフィルタ
+    public var requiredSkills: [any AgentSkill] {
+        skills.filter { $0.availability == .required }
+    }
+
+    /// 任意有効なスキルのみをフィルタ
+    public var optionalSkills: [any AgentSkill] {
+        skills.filter { $0.availability == .optional }
+    }
 }
 
 // MARK: - SkillRegistryDefinition

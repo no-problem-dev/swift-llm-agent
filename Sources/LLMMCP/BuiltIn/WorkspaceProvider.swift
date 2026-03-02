@@ -69,10 +69,23 @@ public actor WorkspaceProvider {
 
     /// セッションのワークスペースを削除
     ///
+    /// インメモリ辞書にエントリがある場合はそのパスを使用し、
+    /// ない場合は `baseDirectory/{sessionId}` から直接削除を試みる。
+    /// これにより、前回起動で作成されたワークスペースや、
+    /// 一度も activate されなかったセッションのディレクトリも確実に削除される。
+    ///
     /// - Parameter sessionId: セッション ID
     public func removeWorkspace(for sessionId: UUID) {
-        guard let workspace = workspaces.removeValue(forKey: sessionId) else { return }
-        try? fileManager.removeItem(atPath: workspace.rootDirectory)
+        if let workspace = workspaces.removeValue(forKey: sessionId) {
+            try? fileManager.removeItem(atPath: workspace.rootDirectory)
+        } else {
+            // 辞書になくてもパスから直接削除を試みる
+            let rootDir = (baseDirectory as NSString)
+                .appendingPathComponent(sessionId.uuidString)
+            if fileManager.fileExists(atPath: rootDir) {
+                try? fileManager.removeItem(atPath: rootDir)
+            }
+        }
     }
 
     /// 全ワークスペースを削除
@@ -86,6 +99,6 @@ public actor WorkspaceProvider {
     /// デフォルトのベースディレクトリ
     private static var defaultBaseDirectory: String {
         let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        return docsDir.appendingPathComponent("sessions").path
+        return docsDir.appendingPathComponent("Sessions").path
     }
 }

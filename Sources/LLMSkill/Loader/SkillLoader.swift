@@ -138,6 +138,17 @@ public enum SkillLoader {
             displayOrder = 999
         }
 
+        // 利用可能性
+        let availability: SkillAvailability
+        if let availStr = frontmatter["availability"] as? String {
+            guard let parsed = SkillAvailability(rawValue: availStr) else {
+                throw SkillError.invalidAvailability(availStr)
+            }
+            availability = parsed
+        } else {
+            availability = .required
+        }
+
         // 呼び出し制御
         let isUserInvocable = frontmatter["user-invocable"] as? Bool ?? true
         let disableModel = frontmatter["disable-model-invocation"] as? Bool ?? false
@@ -199,6 +210,7 @@ public enum SkillLoader {
             instructions: instructions,
             allowedTools: allowedTools,
             configuration: configuration,
+            availability: availability,
             displayName: displayName,
             iconName: iconName,
             category: category,

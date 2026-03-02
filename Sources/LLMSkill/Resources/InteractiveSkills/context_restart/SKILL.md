@@ -6,6 +6,7 @@ icon: arrow.clockwise
 category: meta
 display-order: 17
 context: inline
+availability: optional
 disable-model-invocation: true
 version: 3.0.0
 author: InteractiveSkillKit

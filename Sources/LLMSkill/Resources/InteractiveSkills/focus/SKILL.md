@@ -6,6 +6,7 @@ icon: timer
 category: routine
 display-order: 14
 context: inline
+availability: optional
 disable-model-invocation: true
 version: 3.0.0
 author: InteractiveSkillKit

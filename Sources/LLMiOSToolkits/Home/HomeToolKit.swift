@@ -4,6 +4,7 @@ import Foundation
 import LLMClient
 import LLMTool
 import LLMMCP
+import os
 
 // MARK: - HomeToolKit
 
@@ -33,12 +34,31 @@ public final class HomeToolKit: ToolKit, @unchecked Sendable {
 
     public let name: String = "home"
 
-    private let homeManager: HMHomeManager
+    /// `HMHomeManager` の遅延初期化用ロック
+    ///
+    /// `HMHomeManager()` のインスタンス化は HomeKit の許可ダイアログをトリガーするため、
+    /// ツールが実際に呼び出されるまで生成を遅延させる。
+    private let state: OSAllocatedUnfairLock<HMHomeManager?>
+
+    /// スレッドセーフに `HMHomeManager` を取得（初回アクセス時に生成）
+    private var homeManager: HMHomeManager {
+        state.withLock { manager in
+            if let existing = manager { return existing }
+            let new = HMHomeManager()
+            manager = new
+            return new
+        }
+    }
 
     // MARK: - Initialization
 
-    public init(homeManager: HMHomeManager = HMHomeManager()) {
-        self.homeManager = homeManager
+    public init() {
+        self.state = OSAllocatedUnfairLock(initialState: nil)
+    }
+
+    /// テスト用 DI イニシャライザ
+    public init(homeManager: HMHomeManager) {
+        self.state = OSAllocatedUnfairLock(initialState: homeManager)
     }
 
     // MARK: - ToolKit Protocol
@@ -105,8 +125,10 @@ public final class HomeToolKit: ToolKit, @unchecked Sendable {
                 readOnlyHint: true,
                 openWorldHint: false
             )
-        ) { [homeManager] data in
+        ) { [weak self] data in
+            guard let self else { return .error("HomeToolKit is no longer available.") }
             let input = try JSONDecoder().decode(ListDevicesInput.self, from: data)
+            let homeManager = self.homeManager
 
             guard let home = homeManager.primaryHome ?? homeManager.homes.first else {
                 return .error("No HomeKit home found. Set up a home in the Home app first.")
@@ -327,7 +349,10 @@ public final class HomeToolKit: ToolKit, @unchecked Sendable {
                 readOnlyHint: true,
                 openWorldHint: false
             )
-        ) { [homeManager] data in
+        ) { [weak self] data in
+            guard let self else { return .error("HomeToolKit is no longer available.") }
+            let homeManager = self.homeManager
+
             guard let home = homeManager.primaryHome ?? homeManager.homes.first else {
                 return .error("No HomeKit home found.")
             }
@@ -363,8 +388,10 @@ public final class HomeToolKit: ToolKit, @unchecked Sendable {
                 idempotentHint: true,
                 openWorldHint: false
             )
-        ) { [homeManager] data in
+        ) { [weak self] data in
+            guard let self else { return .error("HomeToolKit is no longer available.") }
             let input = try JSONDecoder().decode(ActivateSceneInput.self, from: data)
+            let homeManager = self.homeManager
 
             guard let home = homeManager.primaryHome ?? homeManager.homes.first else {
                 return .error("No HomeKit home found.")

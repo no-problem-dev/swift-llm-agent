@@ -28,28 +28,32 @@ import LLMAgentSession
 public struct ProjectSessionContext: Sendable {
     public let project: Project
     public let assembler: ProjectContextAssembler
+    public let workspacePath: String?
 
-    public init(project: Project, knowledgeStore: any ProjectKnowledgeStore) {
+    public init(project: Project, knowledgeStore: any ProjectKnowledgeStore, workspacePath: String? = nil) {
         self.project = project
         self.assembler = ProjectContextAssembler(knowledgeStore: knowledgeStore)
+        self.workspacePath = workspacePath
     }
 
     public init(
         project: Project,
         knowledgeStore: any ProjectKnowledgeStore,
-        coreKnowledgeCharacterLimit: Int
+        coreKnowledgeCharacterLimit: Int,
+        workspacePath: String? = nil
     ) {
         self.project = project
         self.assembler = ProjectContextAssembler(
             knowledgeStore: knowledgeStore,
             coreKnowledgeCharacterLimit: coreKnowledgeCharacterLimit
         )
+        self.workspacePath = workspacePath
     }
 
     /// TurnConfiguration にプロジェクトコンテキストを完全適用
     ///
     /// ナレッジツールの追加も自動で行われる。
     public func apply(to config: TurnConfiguration) async throws -> TurnConfiguration {
-        try await assembler.apply(project, to: config)
+        try await assembler.apply(project, to: config, workspacePath: workspacePath)
     }
 }

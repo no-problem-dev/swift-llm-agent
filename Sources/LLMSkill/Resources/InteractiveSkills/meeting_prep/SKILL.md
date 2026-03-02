@@ -6,6 +6,7 @@ icon: person.2.fill
 category: communication
 display-order: 16
 context: inline
+availability: optional
 disable-model-invocation: true
 version: 3.0.0
 author: InteractiveSkillKit

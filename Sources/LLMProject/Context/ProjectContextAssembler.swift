@@ -27,13 +27,18 @@ public struct ProjectContextAssembler: Sendable {
     }
 
     /// TurnConfiguration にプロジェクトコンテキストを完全適用
-    public func apply(_ project: Project, to config: TurnConfiguration) async throws -> TurnConfiguration {
+    public func apply(
+        _ project: Project,
+        to config: TurnConfiguration,
+        workspacePath: String? = nil
+    ) async throws -> TurnConfiguration {
         var result = config
 
         // 1. SystemPrompt の合成
         result.systemPrompt = try await assembleSystemPrompt(
             project: project,
-            existingPrompt: config.systemPrompt
+            existingPrompt: config.systemPrompt,
+            workspacePath: workspacePath
         )
 
         // 2. ToolSet にナレッジツールを追加
@@ -47,17 +52,30 @@ public struct ProjectContextAssembler: Sendable {
 
     private func assembleSystemPrompt(
         project: Project,
-        existingPrompt: SystemPrompt?
+        existingPrompt: SystemPrompt?,
+        workspacePath: String?
     ) async throws -> SystemPrompt {
         var components: [PromptComponent] = []
 
-        // 1. Project Instructions（人間が書いたカスタム指示）
+        // 1. Workspace context（ワークスペースのパスとライフサイクルを LLM に伝える）
+        if let workspacePath {
+            components.append(.context("""
+                You are working in project "\(project.name)".
+                Working directory: \(workspacePath)
+                Files saved here persist across all sessions in this project \
+                and are visible to the user in the Files app.
+                Save important results, artifacts, and generated content directly \
+                to this directory using file tools.
+                """))
+        }
+
+        // 2. Project Instructions（人間が書いたカスタム指示）
         let instructions = project.configuration.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
         if !instructions.isEmpty {
             components.append(.context("project_instructions:\n\(instructions)"))
         }
 
-        // 2. Core Knowledge（coreAlways ポリシーの場合）
+        // 3. Core Knowledge（coreAlways ポリシーの場合）
         if project.configuration.knowledgePolicy == .coreAlways {
             let coreKnowledge = try await renderCoreKnowledge(projectId: project.id)
             if !coreKnowledge.isEmpty {
@@ -65,7 +83,7 @@ public struct ProjectContextAssembler: Sendable {
             }
         }
 
-        // 3. Behavior: ナレッジ管理指示
+        // 4. Behavior: ナレッジ管理指示
         components.append(.behavior(knowledgeManagementBehavior))
 
         // 4. 既存の SystemPrompt と結合

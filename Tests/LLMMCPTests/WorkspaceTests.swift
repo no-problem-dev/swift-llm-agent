@@ -117,3 +117,31 @@ import Foundation
     let workspace = await provider.workspace(for: UUID())
     #expect(workspace == nil)
 }
+
+/// 辞書にないワークスペースでもパスベースフォールバックで削除されることを検証
+@Test func testWorkspaceProviderRemoveFallbackByPath() async throws {
+    let tempDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("workspace-test-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: tempDir) }
+
+    let sessionId = UUID()
+
+    // WorkspaceProvider を経由せず直接ディレクトリを作成（前回起動のセッションを模倣）
+    let rootDir = (tempDir.path as NSString).appendingPathComponent(sessionId.uuidString)
+    try FileManager.default.createDirectory(atPath: rootDir, withIntermediateDirectories: true)
+
+    // ダミーファイルを配置
+    let dummyFile = (rootDir as NSString).appendingPathComponent("test.txt")
+    FileManager.default.createFile(atPath: dummyFile, contents: Data("test".utf8))
+    #expect(FileManager.default.fileExists(atPath: rootDir) == true)
+
+    // 新しい provider（辞書は空）で削除を試みる
+    let provider = WorkspaceProvider(baseDirectory: tempDir.path)
+    let retrieved = await provider.workspace(for: sessionId)
+    #expect(retrieved == nil) // 辞書にはない
+
+    await provider.removeWorkspace(for: sessionId)
+
+    // パスベースフォールバックでディレクトリが削除されること
+    #expect(FileManager.default.fileExists(atPath: rootDir) == false)
+}
