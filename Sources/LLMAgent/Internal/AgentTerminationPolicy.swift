@@ -7,7 +7,7 @@ import LLMTool
 /// エージェントループの終了判定結果
 ///
 /// `AgentTerminationPolicy` が LLM レスポンスを評価した結果を表します。
-internal enum TerminationDecision: Sendable {
+package enum TerminationDecision: Sendable {
     /// ツール呼び出しを処理してループを継続
     case continueWithTools([ToolCall])
 
@@ -24,7 +24,7 @@ internal enum TerminationDecision: Sendable {
 // MARK: - TerminationReason
 
 /// ループ終了の理由
-internal enum TerminationReason: Sendable, Equatable {
+package enum TerminationReason: Sendable, Equatable {
     /// 正常終了（出力なし）
     case completed
 
@@ -49,7 +49,7 @@ internal enum TerminationReason: Sendable, Equatable {
 /// 終了ポリシーに渡されるループコンテキスト
 ///
 /// ループの現在状態を読み取り専用で提供します。
-internal protocol AgentLoopContext: Sendable {
+package protocol AgentLoopContext: Sendable {
     /// 現在のステップ数
     var currentStep: Int { get async }
 
@@ -89,7 +89,7 @@ internal protocol AgentLoopContext: Sendable {
 ///     }
 /// }
 /// ```
-internal protocol AgentTerminationPolicy: Sendable {
+package protocol AgentTerminationPolicy: Sendable {
     /// レスポンスを評価し、ループを終了すべきか判定
     ///
     /// - Parameters:
@@ -308,14 +308,14 @@ internal struct CompositeTerminationPolicy: AgentTerminationPolicy {
 /// デフォルトの終了ポリシーを作成
 ///
 /// 標準ポリシーに重複検出を組み込んだポリシーを返します。
-internal enum TerminationPolicyFactory {
+package enum TerminationPolicyFactory {
     /// デフォルトポリシーを作成
     ///
     /// - Parameters:
     ///   - maxDuplicates: 重複として検出するまでの呼び出し回数
     ///   - maxToolCallsPerTool: 同一ツールの最大呼び出し回数（nil で無制限）
     /// - Returns: 重複検出付きの標準ポリシー
-    static func makeDefault(
+    package static func makeDefault(
         maxDuplicates: Int = 2,
         maxToolCallsPerTool: Int? = 5
     ) -> any AgentTerminationPolicy {
@@ -327,7 +327,7 @@ internal enum TerminationPolicyFactory {
     }
 
     /// 設定から作成
-    static func make(from configuration: AgentConfiguration) -> any AgentTerminationPolicy {
+    package static func make(from configuration: AgentConfiguration) -> any AgentTerminationPolicy {
         DuplicateDetectionPolicy(
             basePolicy: StandardTerminationPolicy(),
             maxDuplicates: configuration.maxDuplicateToolCalls,
@@ -336,7 +336,7 @@ internal enum TerminationPolicyFactory {
     }
 
     /// 標準ポリシーのみを作成（重複検出なし）
-    static func makeStandard() -> any AgentTerminationPolicy {
+    package static func makeStandard() -> any AgentTerminationPolicy {
         StandardTerminationPolicy()
     }
 }
@@ -345,7 +345,7 @@ internal enum TerminationPolicyFactory {
 
 extension LLMResponse {
     /// ツール呼び出し情報を抽出
-    internal func extractToolCalls() -> [ToolCall] {
+    package func extractToolCalls() -> [ToolCall] {
         content.compactMap { block in
             guard case .toolUse(let id, let name, let input) = block else {
                 return nil
@@ -355,7 +355,7 @@ extension LLMResponse {
     }
 
     /// テキストコンテンツを抽出
-    internal func extractTextContent() -> String? {
+    package func extractTextContent() -> String? {
         let text = content.compactMap { block -> String? in
             if case .text(let value) = block {
                 return value

@@ -80,19 +80,36 @@ package enum SubAgentRunner {
         eventHandler: SubAgentEventHandler?
     ) async throws -> SubAgentRunResult where Client.Model: Sendable {
         var messages = initialMessages
-        var step = 0
-        let maxSteps = configuration.maxSteps
-        let softMaxSteps = configuration.softMaxSteps
+        let stateManager = AgentLoopStateManager(configuration: configuration)
+
+        // サブエージェントではステップ上限が主な制約のため、
+        // maxToolCallsPerTool をステップ数に合わせてスケーリング
+        // （例: maxSteps=20, maxToolCallsPerTool=5 → 20 にスケール）
+        let scaledConfiguration = AgentConfiguration(
+            maxSteps: configuration.maxSteps,
+            softMaxSteps: configuration.softMaxSteps,
+            autoExecuteTools: configuration.autoExecuteTools,
+            maxDuplicateToolCalls: configuration.maxDuplicateToolCalls,
+            maxToolCallsPerTool: configuration.maxToolCallsPerTool.map {
+                max($0, configuration.maxSteps)
+            },
+            maxInteractiveCalls: configuration.maxInteractiveCalls,
+            thinkingMode: configuration.thinkingMode,
+            skipFinalOutput: configuration.skipFinalOutput
+        )
+        let policy = TerminationPolicyFactory.make(from: scaledConfiguration)
         let deadline = timeout.map { ContinuousClock.now + $0 }
 
-        while step < maxSteps {
+        while await !stateManager.isAtStepLimit {
             try checkForCancellation(messages: messages)
-            step += 1
+            try await stateManager.incrementStep()
 
             // ソフトリミット注入
-            if step == softMaxSteps {
+            if await stateManager.isAtSoftLimit {
+                let maxSteps = await stateManager.maxSteps
+                let currentStep = await stateManager.currentStep
                 let softLimitMsg =
-                    "IMPORTANT: You are running low on remaining steps (\(maxSteps - step) left). "
+                    "IMPORTANT: You are running low on remaining steps (\(maxSteps - currentStep) left). "
                     + "Wrap up your current work and provide your final answer now. "
                     + "Do not start new tool calls unless absolutely necessary."
                 messages.append(LLMMessage.user(softLimitMsg))
@@ -127,53 +144,81 @@ package enum SubAgentRunner {
             try checkForCancellation(messages: messages)
             appendAssistantResponse(response, to: &messages)
 
-            // ツール呼び出しの抽出
-            let toolCalls = extractToolCalls(from: response)
+            // TerminationPolicy による判定
+            let decision = await policy.shouldTerminate(
+                response: response,
+                context: stateManager
+            )
 
-            if toolCalls.isEmpty {
-                // ツール呼び出しなし → テキストで完了
-                let text = extractTextContent(from: response)
+            switch decision {
+            case .continueWithTools(let toolCalls):
+                // ツール呼び出し履歴を記録
+                await stateManager.recordToolCalls(toolCalls)
+
+                // ツール実行は逐次に限定し、各呼び出しでチェックポイントを残す
+                var toolResults: [ToolResponse] = []
+                for call in toolCalls {
+                    await eventHandler?(.toolCall(taskId: taskId, call))
+                    let checkpointMessages = messages
+                    let result = try await runWithinDeadline(
+                        deadline: deadline,
+                        messages: checkpointMessages,
+                        operation: {
+                        do {
+                            let toolResult = try await tools.execute(toolNamed: call.name, with: call.arguments)
+                            return ToolResponse(
+                                callId: call.id,
+                                name: call.name,
+                                output: toolResult.stringValue,
+                                isError: toolResult.isError
+                            )
+                        } catch {
+                            return ToolResponse(
+                                callId: call.id,
+                                name: call.name,
+                                output: "Error: \(error.localizedDescription)",
+                                isError: true
+                            )
+                        }
+                        }
+                    )
+                    try checkForCancellation(messages: messages)
+                    toolResults.append(result)
+                    await eventHandler?(.toolResult(taskId: taskId, result))
+                }
+
+                if !toolResults.isEmpty {
+                    appendToolResults(toolResults, to: &messages)
+                }
+
+            case .continueWithThinking:
+                continue
+
+            case .terminateWithOutput(let text):
                 if text.isEmpty {
                     throw SubAgentError.emptyResponse
                 }
                 await eventHandler?(.completed(taskId: taskId, result: text))
                 return SubAgentRunResult(output: text, messages: messages)
-            }
 
-            // ツール実行は逐次に限定し、各呼び出しでチェックポイントを残す
-            var toolResults: [ToolResponse] = []
-            for call in toolCalls {
-                await eventHandler?(.toolCall(taskId: taskId, call))
-                let checkpointMessages = messages
-                let result = try await runWithinDeadline(
-                    deadline: deadline,
-                    messages: checkpointMessages,
-                    operation: {
-                    do {
-                        let toolResult = try await tools.execute(toolNamed: call.name, with: call.arguments)
-                        return ToolResponse(
-                            callId: call.id,
-                            name: call.name,
-                            output: toolResult.stringValue,
-                            isError: toolResult.isError
-                        )
-                    } catch {
-                        return ToolResponse(
-                            callId: call.id,
-                            name: call.name,
-                            output: "Error: \(error.localizedDescription)",
-                            isError: true
-                        )
+            case .terminateImmediately(let reason):
+                // 早期終了: 最後のテキストで完了を試行
+                let lastText = extractLastAssistantText(from: messages)
+                if !lastText.isEmpty {
+                    #if DEBUG
+                    switch reason {
+                    case .duplicateToolCallDetected(let toolName, let count):
+                        print("[SubAgent] Duplicate tool call detected: \(toolName) called \(count) times with same input")
+                    case .maxToolCallsPerToolReached(let toolName, let count):
+                        print("[SubAgent] Tool call limit reached: \(toolName) called \(count) times total")
+                    default:
+                        break
                     }
-                    }
-                )
-                try checkForCancellation(messages: messages)
-                toolResults.append(result)
-                await eventHandler?(.toolResult(taskId: taskId, result))
-            }
-
-            if !toolResults.isEmpty {
-                appendToolResults(toolResults, to: &messages)
+                    #endif
+                    await eventHandler?(.completed(taskId: taskId, result: lastText))
+                    return SubAgentRunResult(output: lastText, messages: messages)
+                }
+                throw SubAgentRunInterruption.stepLimitExceeded(messages: messages)
             }
         }
 
@@ -224,22 +269,6 @@ package enum SubAgentRunner {
             )
         }
         messages.append(LLMMessage(role: .user, contents: contents))
-    }
-
-    private static func extractToolCalls(from response: LLMResponse) -> [ToolCall] {
-        response.content.compactMap { block in
-            guard case .toolUse(let id, let name, let input) = block else {
-                return nil
-            }
-            return ToolCall(id: id, name: name, arguments: input)
-        }
-    }
-
-    private static func extractTextContent(from response: LLMResponse) -> String {
-        response.content.compactMap { block -> String? in
-            if case .text(let value) = block { return value }
-            return nil
-        }.joined()
     }
 
     private static func extractLastAssistantText(from messages: [LLMMessage]) -> String {

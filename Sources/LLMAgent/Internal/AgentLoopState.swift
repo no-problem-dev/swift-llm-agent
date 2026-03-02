@@ -82,17 +82,17 @@ internal struct AgentLoopStateSnapshot: Sendable {
 ///
 /// ステップ数、ツール呼び出し履歴などを追跡し、
 /// `AgentLoopContext` プロトコルを通じて終了ポリシーに情報を提供します。
-internal actor AgentLoopStateManager: AgentLoopContext {
+package actor AgentLoopStateManager: AgentLoopContext {
     // MARK: - Properties
 
     /// 現在のステップ数
-    private(set) var currentStep: Int = 0
+    package private(set) var currentStep: Int = 0
 
     /// 最大ステップ数
-    let maxSteps: Int
+    package let maxSteps: Int
 
     /// ソフトリミットステップ数
-    let softMaxSteps: Int
+    package let softMaxSteps: Int
 
     /// ツール呼び出し履歴
     private var toolCallHistory: [ToolCallRecord] = []
@@ -102,12 +102,12 @@ internal actor AgentLoopStateManager: AgentLoopContext {
 
     // MARK: - Initialization
 
-    init(maxSteps: Int) {
+    package init(maxSteps: Int) {
         self.maxSteps = maxSteps
         self.softMaxSteps = max(1, maxSteps - 2)
     }
 
-    init(configuration: AgentConfiguration) {
+    package init(configuration: AgentConfiguration) {
         self.maxSteps = configuration.maxSteps
         self.softMaxSteps = configuration.softMaxSteps
     }
@@ -115,22 +115,22 @@ internal actor AgentLoopStateManager: AgentLoopContext {
     // MARK: - AgentLoopContext Conformance
 
     /// ステップ上限に達しているか
-    var isAtStepLimit: Bool {
+    package var isAtStepLimit: Bool {
         currentStep >= maxSteps
     }
 
     /// ソフトリミットに達しているか
-    var isAtSoftLimit: Bool {
+    package var isAtSoftLimit: Bool {
         currentStep == softMaxSteps
     }
 
     /// 指定ツールの呼び出し回数をカウント
-    func countToolCalls(named name: String) -> Int {
+    package func countToolCalls(named name: String) -> Int {
         toolCallHistory.filter { $0.name == name }.count
     }
 
     /// 重複するツール呼び出し（同名・同入力）をカウント
-    func countDuplicateToolCalls(name: String, inputHash: Int) -> Int {
+    package func countDuplicateToolCalls(name: String, inputHash: Int) -> Int {
         toolCallHistory.filter {
             $0.name == name && $0.inputHash == inputHash
         }.count
@@ -143,7 +143,7 @@ internal actor AgentLoopStateManager: AgentLoopContext {
     /// - Returns: 新しいステップ数
     /// - Throws: `AgentError.maxStepsExceeded` if limit reached
     @discardableResult
-    func incrementStep() throws -> Int {
+    package func incrementStep() throws -> Int {
         currentStep += 1
         if currentStep > maxSteps {
             throw AgentError.maxStepsExceeded(steps: maxSteps)
@@ -152,25 +152,25 @@ internal actor AgentLoopStateManager: AgentLoopContext {
     }
 
     /// ツール呼び出しを履歴に記録
-    func recordToolCall(_ call: ToolCall) {
+    package func recordToolCall(_ call: ToolCall) {
         let record = ToolCallRecord(from: call)
         toolCallHistory.append(record)
     }
 
     /// 複数のツール呼び出しを履歴に記録
-    func recordToolCalls(_ calls: [ToolCall]) {
+    package func recordToolCalls(_ calls: [ToolCall]) {
         for call in calls {
             recordToolCall(call)
         }
     }
 
     /// ループを完了としてマーク
-    func markCompleted() {
+    package func markCompleted() {
         isCompleted = true
     }
 
     /// ループが継続可能かチェック
-    func canContinue() -> Bool {
+    package func canContinue() -> Bool {
         !isCompleted && currentStep < maxSteps
     }
 

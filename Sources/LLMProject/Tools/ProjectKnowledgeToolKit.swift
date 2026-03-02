@@ -112,7 +112,7 @@ public final class ProjectKnowledgeToolKit: ToolKit, @unchecked Sendable {
     private var saveTool: BuiltInTool {
         BuiltInTool(
             name: "project_knowledge_save",
-            description: "Save a knowledge entry to a topic. If the topic doesn't exist, it will be created automatically. Use this to persist architectural decisions, user preferences, patterns, or any important context that should be available in future sessions.",
+            description: "Save a knowledge entry to the internal knowledge base (not a file on the filesystem). If the topic doesn't exist, it will be created automatically. Use this to persist the assistant's own learnings: architectural decisions, user preferences, recurring patterns, or technical context that should be available in future sessions. When the user explicitly asks to save, create, or write a file, use write_file instead.",
             inputSchema: .object(
                 properties: [
                     "topic": .string(description: "Topic name (e.g. 'architecture', 'user-preferences', 'debugging-notes')"),

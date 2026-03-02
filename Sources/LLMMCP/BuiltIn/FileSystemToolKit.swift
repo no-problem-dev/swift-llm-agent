@@ -1,6 +1,7 @@
 import Foundation
 import LLMClient
 import LLMTool
+import os
 
 // MARK: - FileSystemToolKit
 
@@ -56,6 +57,9 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
 
     /// FileManager
     private let fileManager: FileManager
+
+    /// 読み取り済みファイルパスを追跡（write/edit 前の read 強制用）
+    private let readPaths = OSAllocatedUnfairLock(initialState: Set<String>())
 
     // MARK: - Initialization
 
@@ -145,6 +149,16 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
         return resolvedPath
     }
 
+    // MARK: - Read Tracking
+
+    private func recordRead(_ path: String) {
+        readPaths.withLock { $0.insert(path) }
+    }
+
+    private func hasRead(_ path: String) -> Bool {
+        readPaths.withLock { $0.contains(path) }
+    }
+
     // MARK: - Tool Definitions
 
     /// read_file ツール
@@ -175,6 +189,7 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
                 throw FileSystemToolKitError.encodingError(path: validPath)
             }
 
+            self.recordRead(validPath)
             return .text(text)
         }
     }
@@ -210,6 +225,7 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
                         results.append(FileReadResult(path: path, content: nil, error: "Could not read file"))
                         continue
                     }
+                    self.recordRead(validPath)
                     results.append(FileReadResult(path: path, content: text, error: nil))
                 } catch {
                     results.append(FileReadResult(path: path, content: nil, error: error.localizedDescription))
@@ -225,7 +241,7 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
     private var writeFileTool: BuiltInTool {
         BuiltInTool(
             name: "write_file",
-            description: "Create a new file or overwrite an existing file with new contents. Creates parent directories if needed. Working directory: \(workingDirectory). Relative paths are resolved against this directory.",
+            description: "Create a new file or overwrite an existing file with new contents. Use this tool when the user asks to: save content to a file, create a document, export as Markdown or text, write a summary to a file, or any request that implies creating a persistent file on the filesystem. Creates parent directories if needed. IMPORTANT: You must use read_file before overwriting an existing file — this tool will fail otherwise. For partial modifications, prefer edit_file instead. Working directory: \(workingDirectory).",
             inputSchema: .object(
                 properties: [
                     "path": .string(description: "Absolute or relative path where to write the file"),
@@ -242,7 +258,12 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
             )
         ) { [self] data in
             let input = try JSONDecoder().decode(WriteFileInput.self, from: data)
-            let validPath = try validatePath(input.path)
+            let validPath = try self.validatePath(input.path)
+
+            // 既存ファイルの上書きには事前の read が必要
+            if self.fileManager.fileExists(atPath: validPath) && !self.hasRead(validPath) {
+                throw FileSystemToolKitError.readRequired(path: validPath, tool: "write_file")
+            }
 
             // 親ディレクトリを作成
             let parentDir = URL(fileURLWithPath: validPath).deletingLastPathComponent().path
@@ -262,7 +283,7 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
     private var editFileTool: BuiltInTool {
         BuiltInTool(
             name: "edit_file",
-            description: "Make precise text replacements in a file. Finds the exact `old_string` in the file and replaces it with `new_string`. The edit will fail if `old_string` is not unique in the file (provide more surrounding context to make it unique), unless `replace_all` is true.",
+            description: "Make precise text replacements in a file. IMPORTANT: You must use read_file before editing — this tool will fail otherwise. Finds the exact `old_string` and replaces it with `new_string`. The edit will fail if `old_string` is not unique in the file (provide more surrounding context to make it unique), unless `replace_all` is true.",
             inputSchema: .object(
                 properties: [
                     "path": .string(description: "Path to the file to edit"),
@@ -281,9 +302,14 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
             )
         ) { [self] data in
             let input = try JSONDecoder().decode(EditFileInput.self, from: data)
-            let validPath = try validatePath(input.path)
+            let validPath = try self.validatePath(input.path)
 
-            guard let fileData = fileManager.contents(atPath: validPath) else {
+            // edit は必ず既存ファイルを編集するため、事前の read を無条件で要求
+            if !self.hasRead(validPath) {
+                throw FileSystemToolKitError.readRequired(path: validPath, tool: "edit_file")
+            }
+
+            guard let fileData = self.fileManager.contents(atPath: validPath) else {
                 throw FileSystemToolKitError.fileNotFound(path: validPath)
             }
 
@@ -887,6 +913,7 @@ public enum FileSystemToolKitError: Error, LocalizedError {
     case fileNotFound(path: String)
     case encodingError(path: String)
     case operationFailed(message: String)
+    case readRequired(path: String, tool: String)
 
     public var errorDescription: String? {
         switch self {
@@ -898,6 +925,8 @@ public enum FileSystemToolKitError: Error, LocalizedError {
             return "Could not read file as UTF-8: \(path)"
         case .operationFailed(let message):
             return message
+        case .readRequired(let path, let tool):
+            return "Cannot \(tool) '\(path)' without reading it first. Use read_file to read the file, then retry \(tool)."
         }
     }
 }

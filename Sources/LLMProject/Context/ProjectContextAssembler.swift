@@ -64,8 +64,9 @@ public struct ProjectContextAssembler: Sendable {
                 Working directory: \(workspacePath)
                 Files saved here persist across all sessions in this project \
                 and are visible to the user in the Files app.
-                Save important results, artifacts, and generated content directly \
-                to this directory using file tools.
+                When the user asks to save, create, or write a file \
+                (e.g. "save this as Markdown", "create a summary file", "write this to a file"), \
+                always use write_file to create the file in this directory.
                 """))
         }
 
@@ -137,7 +138,10 @@ public struct ProjectContextAssembler: Sendable {
         or technical context — save it using project_knowledge_save. \
         Organize knowledge into meaningful topics. Mark topics as 'core' if they \
         should be automatically loaded into every future session. \
-        Do not ask the user before saving knowledge — use your judgment.
+        Do not ask the user before saving knowledge — use your judgment. \
+        When the user explicitly asks to save content to a file, create a document, \
+        or export as Markdown/text, always use write_file to create a real file \
+        on the filesystem — do not use project_knowledge_save for that purpose.
         """
     }
 }
