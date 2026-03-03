@@ -99,6 +99,12 @@ public struct UnconfiguredImageGenerationProvider: ImageGenerationProvider {
 ///
 /// - `generate_image`: テキストプロンプトから画像を生成
 public final class ImageGenerationToolKit: ToolKit, @unchecked Sendable {
+
+    /// 生成画像をメディアストアに保存するクロージャ
+    ///
+    /// `(Data, ImageMediaType) -> String` — 画像データと MIME タイプを受け取り、保存後のメディア ID を返す。
+    public typealias MediaSaver = @Sendable (Data, ImageMediaType) async throws -> String
+
     // MARK: - Properties
 
     public let name: String = "image_generation"
@@ -106,39 +112,51 @@ public final class ImageGenerationToolKit: ToolKit, @unchecked Sendable {
     /// 画像生成プロバイダー
     private let provider: any ImageGenerationProvider
 
+    /// 生成画像を MediaStore に保存するクロージャ（nil の場合は保存しない）
+    private let mediaSaver: MediaSaver?
+
     // MARK: - Initialization
 
     /// ImageGenerationToolKitを作成
     ///
-    /// - Parameter provider: 画像生成プロバイダー（デフォルト: UnconfiguredImageGenerationProvider）
-    public init(provider: (any ImageGenerationProvider)? = nil) {
+    /// - Parameters:
+    ///   - provider: 画像生成プロバイダー（デフォルト: UnconfiguredImageGenerationProvider）
+    ///   - mediaSaver: 生成画像を保存するクロージャ（nil の場合は保存しない）
+    public init(provider: (any ImageGenerationProvider)? = nil, mediaSaver: MediaSaver? = nil) {
         self.provider = provider ?? UnconfiguredImageGenerationProvider()
+        self.mediaSaver = mediaSaver
     }
 
     // MARK: - Factory Methods
 
     /// OpenAI gpt-image-1 プロバイダーで ImageGenerationToolKit を作成
     ///
-    /// - Parameter apiKey: OpenAI API キー
+    /// - Parameters:
+    ///   - apiKey: OpenAI API キー
+    ///   - mediaSaver: 生成画像を保存するクロージャ
     /// - Returns: 設定済みの ImageGenerationToolKit
-    public static func openai(apiKey: String) -> ImageGenerationToolKit {
-        ImageGenerationToolKit(provider: OpenAIImageProvider(apiKey: apiKey))
+    public static func openai(apiKey: String, mediaSaver: MediaSaver? = nil) -> ImageGenerationToolKit {
+        ImageGenerationToolKit(provider: OpenAIImageProvider(apiKey: apiKey), mediaSaver: mediaSaver)
     }
 
     /// fal.ai FLUX.2 Schnell プロバイダーで ImageGenerationToolKit を作成
     ///
-    /// - Parameter apiKey: fal.ai API キー
+    /// - Parameters:
+    ///   - apiKey: fal.ai API キー
+    ///   - mediaSaver: 生成画像を保存するクロージャ
     /// - Returns: 設定済みの ImageGenerationToolKit
-    public static func falai(apiKey: String) -> ImageGenerationToolKit {
-        ImageGenerationToolKit(provider: FalAIImageProvider(apiKey: apiKey))
+    public static func falai(apiKey: String, mediaSaver: MediaSaver? = nil) -> ImageGenerationToolKit {
+        ImageGenerationToolKit(provider: FalAIImageProvider(apiKey: apiKey), mediaSaver: mediaSaver)
     }
 
     /// Google Imagen 4 プロバイダーで ImageGenerationToolKit を作成
     ///
-    /// - Parameter apiKey: Gemini API キー
+    /// - Parameters:
+    ///   - apiKey: Gemini API キー
+    ///   - mediaSaver: 生成画像を保存するクロージャ
     /// - Returns: 設定済みの ImageGenerationToolKit
-    public static func gemini(apiKey: String) -> ImageGenerationToolKit {
-        ImageGenerationToolKit(provider: GeminiImageProvider(apiKey: apiKey))
+    public static func gemini(apiKey: String, mediaSaver: MediaSaver? = nil) -> ImageGenerationToolKit {
+        ImageGenerationToolKit(provider: GeminiImageProvider(apiKey: apiKey), mediaSaver: mediaSaver)
     }
 
     // MARK: - ToolKit Protocol
@@ -186,6 +204,15 @@ public final class ImageGenerationToolKit: ToolKit, @unchecked Sendable {
             var description = "Image generated successfully."
             if let revised = result.revisedPrompt {
                 description += " Revised prompt: \(revised)"
+            }
+
+            if let mediaSaver = self.mediaSaver {
+                do {
+                    let mediaId = try await mediaSaver(result.data, result.mimeType)
+                    description += " Media ID: \(mediaId). Use present_media tool with this ID to display the image to the user."
+                } catch {
+                    description += " Warning: Failed to save to media store: \(error.localizedDescription)"
+                }
             }
 
             return .textWithMedia(description, media: [imageContent])

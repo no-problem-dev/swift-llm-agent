@@ -42,6 +42,7 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
     private let client: Client
     private let modelResolver: ModelTierResolver<Client.Model>
     private let catalog: any SubAgentCatalog
+    private let toolPool: ToolSet
     private let taskService: SubAgentTaskService<Client>?
 
     // MARK: - Initialization
@@ -52,16 +53,19 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
     ///   - client: LLM クライアント
     ///   - modelResolver: モデルティアを具体的なモデルに解決するクロージャ
     ///   - catalog: サブエージェントタイプのカタログ
+    ///   - toolPool: サブエージェントに提供可能なツールプール（allowedTools フィルタの対象）
     ///   - taskService: バックグラウンドタスク制御サービス（nil の場合、バックグラウンド実行なし）
     public init(
         client: Client,
         modelResolver: @escaping ModelTierResolver<Client.Model>,
         catalog: any SubAgentCatalog,
+        toolPool: ToolSet = ToolSet(),
         taskService: SubAgentTaskService<Client>? = nil
     ) {
         self.client = client
         self.modelResolver = modelResolver
         self.catalog = catalog
+        self.toolPool = toolPool
         self.taskService = taskService
     }
 
@@ -155,6 +159,8 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
         // モデルティアに基づいてモデルを解決
         let model = modelResolver(agentType.modelTier)
 
+        let resolvedTools = resolveTools(for: agentType)
+
         // バックグラウンド実行
         if args.runInBackground == true, let taskService {
             let info = await taskService.startTask(
@@ -162,7 +168,7 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
                 description: args.description,
                 prompt: args.prompt,
                 model: model,
-                tools: agentType.tools,
+                tools: resolvedTools,
                 systemPrompt: agentType.systemPrompt,
                 configuration: agentType.configuration,
                 timeout: parsedTimeout(args.timeoutSeconds),
@@ -190,7 +196,7 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
                     description: args.description,
                     prompt: args.prompt,
                     model: model,
-                    tools: agentType.tools,
+                    tools: resolvedTools,
                     systemPrompt: agentType.systemPrompt,
                     configuration: applyMaxStepsOverride(args.maxSteps, to: agentType.configuration),
                     timeout: parsedTimeout(args.timeoutSeconds)
@@ -200,7 +206,7 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
                     client: client,
                     model: model,
                     messages: [.user(args.prompt)],
-                    tools: agentType.tools,
+                    tools: resolvedTools,
                     systemPrompt: agentType.systemPrompt,
                     configuration: applyMaxStepsOverride(args.maxSteps, to: agentType.configuration),
                     timeout: parsedTimeout(args.timeoutSeconds),
@@ -217,6 +223,28 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
 }
 
 private extension DelegateTaskTool {
+
+    /// サブエージェントのツールを解決
+    ///
+    /// 優先度:
+    /// 1. `agentType.tools` が非空 → 直接使用
+    /// 2. `agentType.allowedTools` が非 nil → toolPool からフィルタ
+    /// 3. `agentType.tools`（空の ToolSet）をそのまま返す
+    func resolveTools(for agentType: any SubAgentType) -> ToolSet {
+        if !agentType.tools.isEmpty {
+            return agentType.tools
+        }
+
+        if let allowedNames = agentType.allowedTools {
+            let filtered = toolPool.tools.filter { tool in
+                allowedNames.contains(tool.toolName)
+            }
+            return ToolSet(tools: filtered)
+        }
+
+        return agentType.tools
+    }
+
     func parsedTimeout(_ timeoutSeconds: Int?) -> Duration? {
         SubAgentToolHelpers.parsedTimeout(timeoutSeconds)
     }

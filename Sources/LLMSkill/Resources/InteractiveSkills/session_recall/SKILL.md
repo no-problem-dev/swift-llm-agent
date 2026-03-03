@@ -8,6 +8,7 @@ display-order: 18
 context: inline
 availability: optional
 disable-model-invocation: true
+ephemeral: true
 version: 3.0.0
 author: InteractiveSkillKit
 tags:

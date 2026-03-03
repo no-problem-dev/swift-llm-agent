@@ -31,6 +31,12 @@ public protocol SubAgentType: Sendable {
     /// 使用可能ツール
     var tools: ToolSet { get }
 
+    /// 許可するツール名のリスト
+    ///
+    /// `tools` が空の場合、このリストで toolPool からフィルタリング。
+    /// `nil` の場合は制限なし。
+    var allowedTools: [String]? { get }
+
     /// システムプロンプト（オプション）
     var systemPrompt: SystemPrompt? { get }
 
@@ -44,6 +50,9 @@ public protocol SubAgentType: Sendable {
 // MARK: - Default Implementation
 
 extension SubAgentType {
+    /// デフォルトの allowedTools（nil = 制限なし）
+    public var allowedTools: [String]? { nil }
+
     /// デフォルトのシステムプロンプト（nil）
     public var systemPrompt: SystemPrompt? { nil }
 
@@ -75,6 +84,7 @@ public struct SubAgentTypeDefinition: SubAgentType {
     public let name: String
     public let description: String
     public let tools: ToolSet
+    public let allowedTools: [String]?
     public let systemPrompt: SystemPrompt?
     public let configuration: AgentConfiguration
     public let modelTier: ModelTier
@@ -85,6 +95,7 @@ public struct SubAgentTypeDefinition: SubAgentType {
     ///   - name: カタログ内の識別子
     ///   - description: LLM に見せる能力説明
     ///   - tools: 使用可能ツール
+    ///   - allowedTools: 許可するツール名のリスト（toolPool からフィルタ用）
     ///   - systemPrompt: システムプロンプト（オプション）
     ///   - configuration: エージェント設定
     ///   - modelTier: モデルの強度ティア
@@ -92,6 +103,7 @@ public struct SubAgentTypeDefinition: SubAgentType {
         name: String,
         description: String,
         tools: ToolSet = ToolSet {},
+        allowedTools: [String]? = nil,
         systemPrompt: SystemPrompt? = nil,
         configuration: AgentConfiguration = .default,
         modelTier: ModelTier = .standard
@@ -99,6 +111,7 @@ public struct SubAgentTypeDefinition: SubAgentType {
         self.name = name
         self.description = description
         self.tools = tools
+        self.allowedTools = allowedTools
         self.systemPrompt = systemPrompt
         self.configuration = configuration
         self.modelTier = modelTier
@@ -118,6 +131,7 @@ public struct SubAgentTypeDefinition: SubAgentType {
     public init(
         name: String,
         description: String,
+        allowedTools: [String]? = nil,
         systemPrompt: SystemPrompt? = nil,
         configuration: AgentConfiguration = .default,
         modelTier: ModelTier = .standard,
@@ -126,6 +140,7 @@ public struct SubAgentTypeDefinition: SubAgentType {
         self.name = name
         self.description = description
         self.tools = ToolSet(tools)
+        self.allowedTools = allowedTools
         self.systemPrompt = systemPrompt
         self.configuration = configuration
         self.modelTier = modelTier

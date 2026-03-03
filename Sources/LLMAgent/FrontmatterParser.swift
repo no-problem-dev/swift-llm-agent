@@ -1,27 +1,46 @@
 import Foundation
 
+// MARK: - FrontmatterParseError
+
+/// フロントマターパース時のエラー
+public enum FrontmatterParseError: Error, Sendable, LocalizedError {
+    /// 開始デリミタ（---）が見つからない
+    case missingOpeningDelimiter
+    /// 終了デリミタ（---）が見つからない
+    case missingClosingDelimiter
+
+    public var errorDescription: String? {
+        switch self {
+        case .missingOpeningDelimiter:
+            "Missing YAML frontmatter delimiter (---)"
+        case .missingClosingDelimiter:
+            "Missing closing frontmatter delimiter (---)"
+        }
+    }
+}
+
 // MARK: - FrontmatterParser
 
 /// YAML フロントマターの軽量パーサー
 ///
-/// SKILL.md で使用される YAML のサブセットをパースします。
+/// SKILL.md / AGENT.md で使用される YAML のサブセットをパースします。
 /// 外部依存なしで、以下の型をサポート:
 /// - 文字列値
 /// - 真偽値（true/false, yes/no）
 /// - 文字列配列（`- item` 形式およびインライン `[a, b]` 形式）
 /// - 複数行文字列（`|` リテラルブロック）
-enum FrontmatterParser {
+public enum FrontmatterParser {
 
     /// フロントマターと本文を分離してパース
     ///
     /// - Parameter content: YAML フロントマター + Markdown のテキスト
     /// - Returns: (フロントマター辞書, 本文)
     /// - Throws: フロントマターが見つからない場合
-    static func parse(_ content: String) throws -> ([String: Any], String) {
+    public static func parse(_ content: String) throws -> ([String: Any], String) {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard trimmed.hasPrefix("---") else {
-            throw SkillError.parseError("Missing YAML frontmatter delimiter (---)")
+            throw FrontmatterParseError.missingOpeningDelimiter
         }
 
         // 開始 --- の後の行から、次の --- を探す
@@ -29,7 +48,7 @@ enum FrontmatterParser {
         let remaining = String(trimmed[afterStart...])
 
         guard let endRange = remaining.range(of: "\n---") else {
-            throw SkillError.parseError("Missing closing frontmatter delimiter (---)")
+            throw FrontmatterParseError.missingClosingDelimiter
         }
 
         let yamlContent = String(remaining[remaining.startIndex..<endRange.lowerBound])
@@ -46,14 +65,14 @@ enum FrontmatterParser {
             ? String(remaining[bodyStart...])
             : ""
 
-        let frontmatter = try parseYAML(yamlContent)
+        let frontmatter = parseYAML(yamlContent)
         return (frontmatter, body)
     }
 
     // MARK: - Private
 
     /// 簡易 YAML パーサー
-    private static func parseYAML(_ yaml: String) throws -> [String: Any] {
+    private static func parseYAML(_ yaml: String) -> [String: Any] {
         var result: [String: Any] = [:]
         var currentKey: String? = nil
         var currentArray: [String]? = nil

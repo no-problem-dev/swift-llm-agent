@@ -96,7 +96,12 @@ public enum SkillLoader {
     /// - Returns: パースされたスキル定義
     /// - Throws: パースエラー
     public static func parse(content: String) throws -> AgentSkillDefinition {
-        let (frontmatter, body) = try FrontmatterParser.parse(content)
+        let (frontmatter, body): ([String: Any], String)
+        do {
+            (frontmatter, body) = try FrontmatterParser.parse(content)
+        } catch let error as FrontmatterParseError {
+            throw SkillError.parseError(error.localizedDescription)
+        }
 
         // 必須フィールド
         guard let name = frontmatter["name"] as? String else {
@@ -153,6 +158,7 @@ public enum SkillLoader {
         let isUserInvocable = frontmatter["user-invocable"] as? Bool ?? true
         let disableModel = frontmatter["disable-model-invocation"] as? Bool ?? false
         let argumentHint = frontmatter["argument-hint"] as? String
+        let isEphemeral = frontmatter["ephemeral"] as? Bool ?? false
 
         // メタデータ
         let license = frontmatter["license"] as? String
@@ -219,7 +225,8 @@ public enum SkillLoader {
             isModelInvocable: !disableModel,
             argumentHint: argumentHint,
             metadata: metadata,
-            modelTier: modelTier
+            modelTier: modelTier,
+            isEphemeral: isEphemeral
         )
     }
 }

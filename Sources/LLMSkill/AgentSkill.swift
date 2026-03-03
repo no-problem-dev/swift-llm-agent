@@ -116,6 +116,12 @@ public protocol AgentSkill: Sendable {
 
     /// fork モードのサブエージェントが使用するモデルティア
     var modelTier: ModelTier { get }
+
+    /// エフェメラルセッションとして実行するか
+    ///
+    /// `true` の場合、スキル起動時にセッションを永続化せず、
+    /// 完了後にセッション一覧に残らない一時的なセッションとして動作する。
+    var isEphemeral: Bool { get }
 }
 
 // MARK: - Default Implementations
@@ -135,6 +141,7 @@ extension AgentSkill {
     public var argumentHint: String? { nil }
     public var metadata: SkillMetadata? { nil }
     public var modelTier: ModelTier { .standard }
+    public var isEphemeral: Bool { false }
 }
 
 // MARK: - AgentSkillDefinition
@@ -173,6 +180,7 @@ public struct AgentSkillDefinition: AgentSkill {
     public let argumentHint: String?
     public let metadata: SkillMetadata?
     public let modelTier: ModelTier
+    public let isEphemeral: Bool
 
     public init(
         name: String,
@@ -192,7 +200,8 @@ public struct AgentSkillDefinition: AgentSkill {
         isModelInvocable: Bool = true,
         argumentHint: String? = nil,
         metadata: SkillMetadata? = nil,
-        modelTier: ModelTier = .standard
+        modelTier: ModelTier = .standard,
+        isEphemeral: Bool = false
     ) {
         self.name = name
         self.description = description
@@ -212,6 +221,7 @@ public struct AgentSkillDefinition: AgentSkill {
         self.argumentHint = argumentHint
         self.metadata = metadata
         self.modelTier = modelTier
+        self.isEphemeral = isEphemeral
     }
 
     /// ToolSetBuilder クロージャで初期化
@@ -245,6 +255,7 @@ public struct AgentSkillDefinition: AgentSkill {
         argumentHint: String? = nil,
         metadata: SkillMetadata? = nil,
         modelTier: ModelTier = .standard,
+        isEphemeral: Bool = false,
         @ToolSetBuilder tools: () -> [any Tool]
     ) {
         self.name = name
@@ -265,5 +276,6 @@ public struct AgentSkillDefinition: AgentSkill {
         self.argumentHint = argumentHint
         self.metadata = metadata
         self.modelTier = modelTier
+        self.isEphemeral = isEphemeral
     }
 }
