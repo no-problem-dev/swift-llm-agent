@@ -25,13 +25,17 @@ public struct ProjectConfiguration: Sendable, Codable, Equatable {
     /// プロジェクトにインストール済みのカタログエージェント名
     public var installedCatalogAgentNames: Set<String>
 
+    /// ツール設定の永続化用データ（AppPackage の ToolConfiguration を opaque Data として保持）
+    public var toolConfigurationData: Data?
+
     public init(
         instructions: String = "",
         defaultSkillName: String? = nil,
         defaultModelTier: ModelTier? = nil,
         knowledgePolicy: KnowledgeInjectionPolicy = .coreAlways,
         installedCatalogSkillNames: Set<String> = [],
-        installedCatalogAgentNames: Set<String> = []
+        installedCatalogAgentNames: Set<String> = [],
+        toolConfigurationData: Data? = nil
     ) {
         self.instructions = instructions
         self.defaultSkillName = defaultSkillName
@@ -39,6 +43,7 @@ public struct ProjectConfiguration: Sendable, Codable, Equatable {
         self.knowledgePolicy = knowledgePolicy
         self.installedCatalogSkillNames = installedCatalogSkillNames
         self.installedCatalogAgentNames = installedCatalogAgentNames
+        self.toolConfigurationData = toolConfigurationData
     }
 }
 

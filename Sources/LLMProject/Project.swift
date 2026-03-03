@@ -11,6 +11,7 @@ public struct Project: Sendable, Identifiable, Codable, Equatable {
     public var description: String
     public var iconName: String
     public var themeId: String?
+    public var isDefault: Bool
     public var configuration: ProjectConfiguration
     public let createdAt: Date
     public var updatedAt: Date
@@ -21,6 +22,7 @@ public struct Project: Sendable, Identifiable, Codable, Equatable {
         description: String = "",
         iconName: String = "folder.fill",
         themeId: String? = nil,
+        isDefault: Bool = false,
         configuration: ProjectConfiguration = ProjectConfiguration(),
         createdAt: Date = Date(),
         updatedAt: Date = Date()
@@ -30,6 +32,7 @@ public struct Project: Sendable, Identifiable, Codable, Equatable {
         self.description = description
         self.iconName = iconName
         self.themeId = themeId
+        self.isDefault = isDefault
         self.configuration = configuration
         self.createdAt = createdAt
         self.updatedAt = updatedAt

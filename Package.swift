@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "LLMAgent", targets: ["LLMAgent"]),
         .library(name: "LLMMCP", targets: ["LLMMCP"]),
+        .library(name: "LLMA2A", targets: ["LLMA2A"]),
         .library(name: "LLMAgentSession", targets: ["LLMAgentSession"]),
         .library(name: "LLMProject", targets: ["LLMProject"]),
         .library(name: "LLMToolkits", targets: ["LLMToolkits"]),
@@ -17,6 +18,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../swift-llm-client"),
+        .package(url: "https://github.com/no-problem-dev/swift-a2a.git", from: "0.1.0"),
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.10.0"),
         .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.6.0"),
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.4.0"),
@@ -39,6 +41,7 @@ let package = Package(
         ]),
         .target(name: "LLMProject", dependencies: [
             "LLMMCP",
+            "LLMA2A",
             "LLMAgent",
             "LLMAgentSession",
             .product(name: "LLMClient", package: "swift-llm-client"),
@@ -48,6 +51,7 @@ let package = Package(
             "LLMAgent",
             "LLMAgentSession",
             "LLMMCP",
+            "LLMA2A",
             .product(name: "LLMClient", package: "swift-llm-client"),
             .product(name: "LLMTool", package: "swift-llm-client"),
         ]),
@@ -78,9 +82,15 @@ let package = Package(
                 .copy("Resources/InteractiveSkills"),
             ]
         ),
+        .target(name: "LLMA2A", dependencies: [
+            .product(name: "A2A", package: "swift-a2a"),
+            .product(name: "LLMClient", package: "swift-llm-client"),
+            .product(name: "LLMTool", package: "swift-llm-client"),
+        ]),
         // Tests
         .testTarget(name: "LLMAgentTests", dependencies: ["LLMAgent"]),
         .testTarget(name: "LLMMCPTests", dependencies: ["LLMMCP"]),
+        .testTarget(name: "LLMA2ATests", dependencies: ["LLMA2A"]),
         .testTarget(name: "LLMAgentSessionTests", dependencies: ["LLMAgentSession"]),
         .testTarget(name: "LLMProjectTests", dependencies: ["LLMProject"]),
         .testTarget(name: "LLMiOSToolkitsTests", dependencies: ["LLMiOSToolkits"]),

@@ -4,6 +4,7 @@ import LLMTool
 import LLMAgent
 import LLMAgentSession
 import LLMMCP
+import LLMA2A
 
 /// プロジェクトコンテキストを TurnConfiguration に合成するアセンブラ
 ///
@@ -44,6 +45,14 @@ public struct ProjectContextAssembler: Sendable {
         // 2. ToolSet にナレッジツールを追加
         let toolKit = ProjectKnowledgeToolKit(store: knowledgeStore, projectId: project.id)
         result.tools = config.tools + toolKit
+
+        // 3. プレースホルダー解決（MCP + A2A）
+        if result.tools.containsMCPPlaceholders {
+            result.tools = try await result.tools.resolvingMCPServers()
+        }
+        if result.tools.containsA2APlaceholders {
+            result.tools = try await result.tools.resolvingA2AAgents()
+        }
 
         return result
     }
