@@ -20,18 +20,18 @@ public struct ScopedSkill: Sendable {
 
 /// 3層スコープマージ対応のスキルレジストリ
 ///
-/// `project` > `global` > `builtIn` の優先度で同名スキルを解決します。
+/// `project` > `global` > `catalog` の優先度で同名スキルを解決します。
 /// `SkillRegistry` プロトコルに準拠し、`SkillTool` にそのまま渡せます。
 ///
 /// ## 使用例
 ///
 /// ```swift
 /// let registry = ScopedSkillRegistry(
-///     builtIn: InteractiveSkillKit().skills,
+///     catalog: installedCatalogSkills,
 ///     global: globalCustomSkills,
 ///     project: projectCustomSkills
 /// )
-/// // 同名スキルはプロジェクト > グローバル > ビルトインの優先度
+/// // 同名スキルはプロジェクト > グローバル > カタログの優先度
 /// ```
 public struct ScopedSkillRegistry: SkillRegistry {
 
@@ -46,11 +46,11 @@ public struct ScopedSkillRegistry: SkillRegistry {
     /// 3層スコープからマージ
     ///
     /// - Parameters:
-    ///   - builtIn: ビルトインスキル（最低優先度）
+    ///   - catalog: カタログスキル（最低優先度）
     ///   - global: グローバルカスタムスキル
     ///   - project: プロジェクトカスタムスキル（最高優先度）
     public init(
-        builtIn: [any AgentSkill] = [],
+        catalog: [any AgentSkill] = [],
         global: [any AgentSkill] = [],
         project: [any AgentSkill] = []
     ) {
@@ -68,9 +68,9 @@ public struct ScopedSkillRegistry: SkillRegistry {
                 result.append(ScopedSkill(skill: skill, scope: .global))
             }
         }
-        for skill in builtIn {
+        for skill in catalog {
             if seen.insert(skill.name).inserted {
-                result.append(ScopedSkill(skill: skill, scope: .builtIn))
+                result.append(ScopedSkill(skill: skill, scope: .catalog))
             }
         }
 

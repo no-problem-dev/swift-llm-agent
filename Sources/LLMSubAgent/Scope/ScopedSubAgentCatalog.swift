@@ -20,14 +20,14 @@ public struct ScopedSubAgent: Sendable {
 
 /// 3層スコープマージ対応のサブエージェントカタログ
 ///
-/// `project` > `global` > `builtIn` の優先度で同名エージェントタイプを解決します。
+/// `project` > `global` > `catalog` の優先度で同名エージェントタイプを解決します。
 /// `SubAgentCatalog` プロトコルに準拠し、`DelegateTaskTool` にそのまま渡せます。
 ///
 /// ## 使用例
 ///
 /// ```swift
 /// let catalog = ScopedSubAgentCatalog(
-///     builtIn: [ResearcherAgentType(), DeviceAgentType()],
+///     catalog: installedCatalogAgents,
 ///     global: globalCustomAgents,
 ///     project: projectCustomAgents
 /// )
@@ -45,11 +45,11 @@ public struct ScopedSubAgentCatalog: SubAgentCatalog {
     /// 3層スコープからマージ
     ///
     /// - Parameters:
-    ///   - builtIn: ビルトインエージェントタイプ（最低優先度）
+    ///   - catalog: カタログエージェントタイプ（最低優先度）
     ///   - global: グローバルカスタムエージェントタイプ
     ///   - project: プロジェクトカスタムエージェントタイプ（最高優先度）
     public init(
-        builtIn: [any SubAgentType] = [],
+        catalog: [any SubAgentType] = [],
         global: [any SubAgentType] = [],
         project: [any SubAgentType] = []
     ) {
@@ -67,9 +67,9 @@ public struct ScopedSubAgentCatalog: SubAgentCatalog {
                 result.append(ScopedSubAgent(agentType: agentType, scope: .global))
             }
         }
-        for agentType in builtIn {
+        for agentType in catalog {
             if seen.insert(agentType.name).inserted {
-                result.append(ScopedSubAgent(agentType: agentType, scope: .builtIn))
+                result.append(ScopedSubAgent(agentType: agentType, scope: .catalog))
             }
         }
 

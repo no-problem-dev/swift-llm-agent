@@ -19,16 +19,26 @@ public struct ProjectConfiguration: Sendable, Codable, Equatable {
     /// ナレッジ注入ポリシー
     public var knowledgePolicy: KnowledgeInjectionPolicy
 
+    /// プロジェクトにインストール済みのカタログスキル名
+    public var installedCatalogSkillNames: Set<String>
+
+    /// プロジェクトにインストール済みのカタログエージェント名
+    public var installedCatalogAgentNames: Set<String>
+
     public init(
         instructions: String = "",
         defaultSkillName: String? = nil,
         defaultModelTier: ModelTier? = nil,
-        knowledgePolicy: KnowledgeInjectionPolicy = .coreAlways
+        knowledgePolicy: KnowledgeInjectionPolicy = .coreAlways,
+        installedCatalogSkillNames: Set<String> = [],
+        installedCatalogAgentNames: Set<String> = []
     ) {
         self.instructions = instructions
         self.defaultSkillName = defaultSkillName
         self.defaultModelTier = defaultModelTier
         self.knowledgePolicy = knowledgePolicy
+        self.installedCatalogSkillNames = installedCatalogSkillNames
+        self.installedCatalogAgentNames = installedCatalogAgentNames
     }
 }
 
