@@ -71,10 +71,10 @@ public struct ProjectContextAssembler: Sendable {
             components.append(.context("""
                 You are working in project "\(project.name)".
                 Working directory: \(workspacePath)
+                This is the project's shared workspace. \
                 Files saved here persist across all sessions in this project \
                 and are visible to the user in the Files app.
-                When the user asks to save, create, or write a file \
-                (e.g. "save this as Markdown", "create a summary file", "write this to a file"), \
+                When the user asks to save, create, or write a file, \
                 always use write_file to create the file in this directory.
                 """))
         }
