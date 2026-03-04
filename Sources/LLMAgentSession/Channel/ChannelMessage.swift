@@ -1,30 +1,8 @@
 import Foundation
 import LLMClient
 
-// MARK: - ChannelMessage
-
-/// チャンネル上の 1 メッセージ
-///
-/// 全参加者（user, orchestrator, uiAgent）が同じ型でメッセージを投稿する。
-/// `sender` で発信者を識別し、`content` で共通の語彙を使って通信する。
-public struct ChannelMessage: Sendable, Identifiable {
-    public let id: String
-    public let sender: String
-    public let content: ChannelContent
-    public let timestamp: Date
-
-    public init(
-        id: String = UUID().uuidString,
-        sender: String,
-        content: ChannelContent,
-        timestamp: Date = Date()
-    ) {
-        self.id = id
-        self.sender = sender
-        self.content = content
-        self.timestamp = timestamp
-    }
-}
+// NOTE: ChannelMessage は CollaborationChannel.swift で
+// AgentMessage<ChannelContent> の typealias として定義済み
 
 // MARK: - ChannelContent
 

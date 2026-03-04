@@ -17,6 +17,7 @@ let package = Package(
         .library(name: "LLMSkill", targets: ["LLMSkill"]),
     ],
     dependencies: [
+        .package(path: "../swift-agent-communication"),
         .package(path: "../swift-llm-client"),
         .package(url: "https://github.com/no-problem-dev/swift-a2a.git", from: "0.1.0"),
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.10.0"),
@@ -36,6 +37,7 @@ let package = Package(
         ]),
         .target(name: "LLMAgentSession", dependencies: [
             "LLMAgent",
+            .product(name: "AgentCommunication", package: "swift-agent-communication"),
             .product(name: "LLMClient", package: "swift-llm-client"),
             .product(name: "LLMTool", package: "swift-llm-client"),
         ]),

@@ -1,5 +1,6 @@
 import Foundation
 import LLMClient
+import AgentCommunication
 
 // MARK: - UIAgent
 
@@ -16,8 +17,7 @@ import LLMClient
 /// ## 設計
 ///
 /// UIAgent はセッションのエントリーポイントとして機能する。
-/// ユーザー入力を最初に受信し、即座に初期 UI ブロックを emit してから
-/// Orchestrator にタスクを委譲する。
+/// ユーザー入力を最初に受信し、Orchestrator にタスクを委譲する。
 /// Orchestrator の結果は Channel 経由で UIAgent に返され、
 /// UIAgent が UI ブロック生成を制御する。
 ///
@@ -32,10 +32,13 @@ import LLMClient
 /// })
 ///
 /// // Channel 上で起動
-/// Task { await uiAgent.run(channel: channel) }
+/// Task { await uiAgent.run(on: channel) }
 /// ```
-public actor UIAgent {
+public actor UIAgent: ChannelParticipant {
+    public typealias Content = ChannelContent
     public typealias EventHandler = @Sendable (UIAgentEvent) async -> Void
+
+    public let participantId: String = "uiAgent"
 
     private var eventHandler: EventHandler
 
@@ -55,30 +58,13 @@ public actor UIAgent {
         self.eventHandler = handler
     }
 
-    // MARK: - Main Loop
+    // MARK: - ChannelParticipant
 
-    /// Channel からのメッセージを処理するメインループ
+    /// チャンネルメッセージを処理する
     ///
-    /// Channel の subscribe で取得した AsyncStream を for-await で消費する。
-    /// Channel が close されるか Task がキャンセルされると終了する。
-    public func run(channel: CollaborationChannel) async {
-        let stream = await channel.subscribe(as: "uiAgent")
-        await run(stream: stream)
-    }
-
-    /// 事前取得済みの AsyncStream を消費するメインループ
-    ///
-    /// subscribe を呼び出し側で先に行い、確実にメッセージを受信できるようにする場合に使用。
-    public func run(stream: AsyncStream<ChannelMessage>) async {
-        for await message in stream {
-            guard !Task.isCancelled else { break }
-            await handleMessage(message)
-        }
-    }
-
-    // MARK: - Message Handling
-
-    private func handleMessage(_ message: ChannelMessage) async {
+    /// `ChannelParticipant` プロトコルの要件。
+    /// `run(on:)` / `run(stream:)` はプロトコルのデフォルト実装を使用。
+    public func handleMessage(_ message: ChannelMessage) async {
         switch message.content {
         case .userInput(let input):
             // UIAgent がエントリーポイント: 入力を受け取り、UI に通知後 Orchestrator を起動要求
