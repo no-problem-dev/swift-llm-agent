@@ -16,31 +16,6 @@ import LLMClient
 /// |---|------|------------|
 /// | `SessionStatus` | 内部状態 & 公開プロパティ | なし |
 /// | `SessionPhase<Output>` | ストリームで流れるイベント | あり |
-///
-/// ## 使用例
-///
-/// ```swift
-/// for try await phase in session.run("調査して", model: .sonnet, outputType: ResearchResult.self) {
-///     switch phase {
-///     case .idle:
-///         // 待機状態
-///     case .running(let step):
-///         // ステップに応じた UI 更新
-///     case .awaitingInteraction(let request):
-///         // インタラクション UI を表示
-///         InteractionView(request: request) { response in
-///             await session.respond(response)
-///         }
-///     case .paused:
-///         // 「再開」ボタンを表示
-///     case .completed(let output):
-///         // 型安全に構造化された結果を使用
-///         print(output.summary)
-///     case .failed(let error):
-///         // エラーメッセージと「再開」ボタンを表示
-///     }
-/// }
-/// ```
 public enum SessionPhase<Output: StructuredProtocol>: Sendable {
     /// 待機中（未開始、完了済み、または clear() 後）
     case idle
@@ -49,18 +24,6 @@ public enum SessionPhase<Output: StructuredProtocol>: Sendable {
     ///
     /// - Parameter step: 現在実行中のステップ
     case running(step: AgentStep)
-
-    /// インタラクション待ち
-    ///
-    /// InteractiveTool が検出され、ユーザーの応答を待機中。
-    /// `respond()` で応答するとランループが再開される。
-    case awaitingInteraction(request: InteractionRequest)
-
-    /// ツール実行承認待ち
-    ///
-    /// ToolExecutionPolicy がユーザー承認を要求。
-    /// `respondToAuthorization()` で応答するとランループが再開される。
-    case awaitingAuthorization(request: ToolApprovalRequest)
 
     /// 一時停止（cancel後、再開可能）
     case paused
@@ -88,11 +51,9 @@ extension SessionPhase: Equatable where Output: Equatable {}
 
 extension SessionPhase {
     /// セッションが実行中かどうか
-    ///
-    /// `running` または `awaitingInteraction` の場合に `true`
     public var isActive: Bool {
         switch self {
-        case .running, .awaitingInteraction, .awaitingAuthorization:
+        case .running:
             return true
         default:
             return false
@@ -111,22 +72,6 @@ extension SessionPhase {
     public var currentStep: AgentStep? {
         if case .running(let step) = self {
             return step
-        }
-        return nil
-    }
-
-    /// インタラクション要求（awaitingInteraction の場合のみ）
-    public var interactionRequest: InteractionRequest? {
-        if case .awaitingInteraction(let request) = self {
-            return request
-        }
-        return nil
-    }
-
-    /// 承認リクエスト（awaitingAuthorization の場合のみ）
-    public var authorizationRequest: ToolApprovalRequest? {
-        if case .awaitingAuthorization(let request) = self {
-            return request
         }
         return nil
     }
@@ -165,12 +110,6 @@ extension SessionPhase: CustomStringConvertible {
             return "idle"
         case .running(let step):
             return "running(\(step))"
-        case .awaitingInteraction(let request):
-            let truncated = request.prompt.prefix(30)
-            let typeName = String(describing: type(of: request.payload.rawValue))
-            return "awaitingInteraction(\(typeName): \(truncated)\(request.prompt.count > 30 ? "..." : ""))"
-        case .awaitingAuthorization(let request):
-            return "awaitingAuthorization(\(request.toolCall.name))"
         case .paused:
             return "paused"
         case .completed(let output):

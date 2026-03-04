@@ -4,31 +4,20 @@ import Foundation
 
 /// インタラクション要求
 ///
-/// エージェントが実行中（Layer 1: InteractiveTool）または
-/// 完了後（Layer 2: DirectiveGenerator）に UI に対して発行するインタラクション要求。
-/// UI はこの要求を受け取り、適切なインタラクション UI を表示する。
+/// エージェントの InteractiveTool がユーザー入力を要求する際に生成される。
+/// UIAgent 経由で UI に配信され、ユーザーの応答後にチャネル経由でループが再開される。
 ///
 /// ## 設計
 ///
 /// インタラクションの種類はペイロードの型で決定される。
 /// `InteractionType` enum は不要 — `payload.rawValue` の具体型がそのまま種別を表す。
 ///
-/// ## Layer 1: 実行中インタラクション
-///
-/// InteractiveTool の検出時に生成される。ユーザーの応答後、エージェントループが再開される。
-///
 /// ```swift
-/// case .awaitingInteraction(let request):
-///     // payload の型に応じた View が自動的に選択される
-///     InteractionView(request: request) { response in
-///         await session.respond(response)
-///     }
+/// // UIAgentEvent.interactionRequested で受け取り
+/// InteractionView(request: intent.request) { response in
+///     await channel.postResponse(.interactionResponse(response, forRequestId: intent.id), from: "user")
+/// }
 /// ```
-///
-/// ## Layer 2: 完了後ディレクティブ
-///
-/// DirectiveGenerator によりセッション完了後に生成される。
-/// ユーザーの選択に応じて新しいターンを開始する。
 public struct InteractionRequest: Sendable, Identifiable {
     /// 要求の一意識別子
     public let id: String

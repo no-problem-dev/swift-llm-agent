@@ -15,37 +15,10 @@ import LLMAgent
 /// セッションは**会話履歴のみ**を保持し、それ以外の設定は
 /// `TurnConfiguration` として `run()` / `resume()` の呼び出し時に渡されます。
 ///
-/// ## 使用例
+/// ## CollaborationChannel 連携
 ///
-/// ```swift
-/// let session = ConversationalAgentSession(client: client)
-///
-/// let turnConfig = TurnConfiguration(
-///     systemPrompt: SystemPrompt { "リサーチアシスタントです。" },
-///     tools: ToolSet { WebSearchTool() },
-///     interactiveTools: InteractiveToolConfiguration(
-///         priorityTools: [AskUserTool()]
-///     )
-/// )
-///
-/// for try await phase in session.run(
-///     input: "調査して",
-///     model: .sonnet,
-///     turn: turnConfig,
-///     outputType: ResearchResult.self
-/// ) {
-///     switch phase {
-///     case .running(let step):
-///         print("Step: \(step)")
-///     case .awaitingInteraction(let request):
-///         // InteractionView を表示して respond() を呼ぶ
-///     case .completed(let output):
-///         print("Result: \(output)")
-///     default:
-///         break
-///     }
-/// }
-/// ```
+/// `setChannel()` でチャンネルを設定すると、InteractiveTool / ToolApproval の
+/// 処理がチャンネル経由に切り替わる。
 public protocol ConversationalAgentSessionProtocol<Client>: Actor {
     associatedtype Client: AgentCapableClient where Client.Model: Sendable
 
@@ -54,6 +27,11 @@ public protocol ConversationalAgentSessionProtocol<Client>: Actor {
     var status: SessionStatus { get async }
     var running: Bool { get async }
     var turnCount: Int { get async }
+
+    // MARK: - Channel
+
+    /// コラボレーションチャンネルを設定
+    func setChannel(_ channel: CollaborationChannel) async
 
     // MARK: - Interrupt API
 
@@ -66,28 +44,9 @@ public protocol ConversationalAgentSessionProtocol<Client>: Actor {
     func clear() async
     func cancel() async
 
-    // MARK: - User Interaction API
-
-    var waitingForResponse: Bool { get async }
-    func respond(_ response: InteractionResponse) async
-
-    // MARK: - Authorization API
-
-    /// ツール実行承認に応答
-    ///
-    /// `ToolExecutionPolicy` がユーザー承認を要求した場合に呼び出します。
-    func respondToAuthorization(_ response: ToolApprovalResponse) async
-
     // MARK: - Core API
 
     /// LLM入力を送信してエージェントループを実行
-    ///
-    /// - Parameters:
-    ///   - input: LLM 入力
-    ///   - model: 使用するモデル
-    ///   - turn: このターンの設定（ツール・システムプロンプト・エージェント設定）
-    ///   - outputType: 期待する出力の型
-    /// - Returns: 各フェーズを返す `AsyncThrowingStream`
     nonisolated func run<Output: StructuredProtocol>(
         input: LLMInput,
         model: Client.Model,
@@ -96,12 +55,6 @@ public protocol ConversationalAgentSessionProtocol<Client>: Actor {
     ) -> AsyncThrowingStream<SessionPhase<Output>, Error>
 
     /// 一時停止/エラーからセッションを再開
-    ///
-    /// - Parameters:
-    ///   - model: 使用するモデル
-    ///   - turn: このターンの設定
-    ///   - outputType: 期待する出力の型
-    /// - Returns: 各フェーズを返す `AsyncThrowingStream`
     nonisolated func resume<Output: StructuredProtocol>(
         model: Client.Model,
         turn: TurnConfiguration,
@@ -109,16 +62,6 @@ public protocol ConversationalAgentSessionProtocol<Client>: Actor {
     ) -> AsyncThrowingStream<SessionPhase<Output>, Error>
 
     /// プリフィルメッセージを注入してエージェントループを実行
-    ///
-    /// 合成メッセージ（ツール呼び出し完了済み状態など）を会話履歴に直接注入し、
-    /// ユーザーメッセージを表示せずにエージェントループを開始する。
-    ///
-    /// - Parameters:
-    ///   - prefill: 注入するメッセージ配列
-    ///   - model: 使用するモデル
-    ///   - turn: このターンの設定
-    ///   - outputType: 期待する出力の型
-    /// - Returns: 各フェーズを返す `AsyncThrowingStream`
     nonisolated func runWithPrefill<Output: StructuredProtocol>(
         prefill: [LLMMessage],
         model: Client.Model,

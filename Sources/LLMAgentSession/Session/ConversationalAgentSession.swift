@@ -31,39 +31,11 @@ private enum FinalOutputConstants {
 /// **設定 = ターンごとのパラメータ**として分離しています。
 /// これにより、ターン間でモデル・ツール・システムプロンプト・出力型を自由に変更できます。
 ///
-/// ## InteractiveTool 対応
+/// ## CollaborationChannel 連携
 ///
-/// `InteractiveTool` に準拠したツールが検出されると、ランループは suspend し、
-/// `InteractionRequest` を UI に発行します。UI が `respond()` を呼ぶとランループが再開されます。
-///
-/// ## 使用例
-///
-/// ```swift
-/// let session = ConversationalAgentSession(client: anthropicClient)
-///
-/// let turnConfig = TurnConfiguration(
-///     systemPrompt: SystemPrompt { "リサーチアシスタントです。" },
-///     tools: ToolSet { WebSearchTool() },
-///     interactiveTools: InteractiveToolConfiguration(
-///         priorityTools: [AskUserTool()]
-///     )
-/// )
-///
-/// for try await phase in session.run(
-///     input: "AIについて調査して",
-///     model: .sonnet,
-///     turn: turnConfig,
-///     outputType: ResearchResult.self
-/// ) {
-///     switch phase {
-///     case .awaitingInteraction(let request):
-///         // UI でインタラクションを表示
-///     case .completed(let output):
-///         print(output)
-///     default: break
-///     }
-/// }
-/// ```
+/// `setChannel()` でチャンネルを設定すると、エージェントループ中の
+/// InteractiveTool / ToolApproval 処理がチャンネル経由に切り替わる。
+/// ステップイベントもチャンネルに投稿される。
 public actor ConversationalAgentSession<Client: AgentCapableClient>: ConversationalAgentSessionProtocol
     where Client.Model: Sendable
 {
@@ -76,14 +48,8 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
     /// 現在のセッション状態
     public private(set) var status: SessionStatus = .idle
 
-    /// 保留中の InteractiveTool 呼び出し
-    private var pendingInteractiveCall: (tool: any InteractiveTool, call: ToolCall)?
-    private var responseContinuation: CheckedContinuation<InteractionResponse, Never>?
-    private var interactiveCallCount: Int = 0
-
-    /// ツール実行承認
-    private var authorizationContinuation: CheckedContinuation<ToolApprovalResponse, Never>?
-    private let approvalCache = SessionApprovalCache()
+    /// コラボレーションチャンネル
+    private var channel: CollaborationChannel?
 
     // MARK: - Initialization
 
@@ -110,6 +76,12 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         messages.filter { $0.role == .user }.count
     }
 
+    // MARK: - Protocol Conformance: Channel
+
+    public func setChannel(_ channel: CollaborationChannel) {
+        self.channel = channel
+    }
+
     // MARK: - Protocol Conformance: Interrupt API
 
     public func interrupt(_ message: String) {
@@ -127,53 +99,19 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         messages
     }
 
-    public func clear() {
+    public func clear() async {
         guard status.canClear else { return }
         messages.removeAll()
         interruptQueue.removeAll()
+        channel = nil
         status = .idle
-        Task { await approvalCache.clear() }
     }
 
-    public func cancel() {
+    public func cancel() async {
         guard status.canCancel else { return }
         status = .paused
         interruptQueue.removeAll()
-        pendingInteractiveCall = nil
-
-        if let continuation = responseContinuation {
-            responseContinuation = nil
-            continuation.resume(returning: InteractionResponse(
-                requestId: "",
-                content: .dismissed  // Uses InteractionResponseContent factory
-            ))
-        }
-
-        if let continuation = authorizationContinuation {
-            authorizationContinuation = nil
-            continuation.resume(returning: .deny)
-        }
-    }
-
-    // MARK: - Protocol Conformance: User Interaction API
-
-    public var waitingForResponse: Bool {
-        status.canRespond
-    }
-
-    public func respond(_ response: InteractionResponse) {
-        guard status.canRespond, let continuation = responseContinuation else { return }
-        responseContinuation = nil
-        continuation.resume(returning: response)
-    }
-
-    // MARK: - Protocol Conformance: Authorization API
-
-    public func respondToAuthorization(_ response: ToolApprovalResponse) {
-        guard status.canRespondToAuthorization,
-              let continuation = authorizationContinuation else { return }
-        authorizationContinuation = nil
-        continuation.resume(returning: response)
+        await channel?.close()
     }
 
     // MARK: - Protocol Conformance: Core API
@@ -280,7 +218,9 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         messages.append(LLMMessage.user(continueMsg))
 
         status = .running
-        continuation.yield(.running(step: .userMessage(continueMsg)))
+        let step = AgentStep.userMessage(continueMsg)
+        continuation.yield(.running(step: step))
+        await channel?.post(.step(step), from: "orchestrator")
 
         await runAgentLoop(
             model: model,
@@ -307,7 +247,9 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
 
         let userMessageText = input.prompt.render()
         status = .running
-        continuation.yield(.running(step: .userMessage(userMessageText)))
+        let step = AgentStep.userMessage(userMessageText)
+        continuation.yield(.running(step: step))
+        await channel?.post(.step(step), from: "orchestrator")
 
         await runAgentLoop(
             model: model,
@@ -396,19 +338,25 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                         "Wrap up your current work and produce your final output now. " +
                         "Do not start new tool calls unless absolutely necessary."
                     messages.append(LLMMessage.user(softLimitMsg))
-                    continuation.yield(.running(step: .interrupted(softLimitMsg)))
+                    let interruptedStep = AgentStep.interrupted(softLimitMsg)
+                    continuation.yield(.running(step: interruptedStep))
+                    await channel?.post(.step(interruptedStep), from: "orchestrator")
                 }
 
                 // 割り込みチェックポイント（toolUse フェーズのみ）
                 if case .toolUse = loopPhase, !interruptQueue.isEmpty {
                     for interruptMsg in interruptQueue {
                         messages.append(LLMMessage.user(interruptMsg))
-                        continuation.yield(.running(step: .interrupted(interruptMsg)))
+                        let interruptedStep = AgentStep.interrupted(interruptMsg)
+                        continuation.yield(.running(step: interruptedStep))
+                        await channel?.post(.step(interruptedStep), from: "orchestrator")
                     }
                     interruptQueue.removeAll()
                 }
 
-                continuation.yield(.running(step: .thinking))
+                let thinkingStep = AgentStep.thinking
+                continuation.yield(.running(step: thinkingStep))
+                await channel?.post(.step(thinkingStep), from: "orchestrator")
 
                 messages.sanitizeOrphanedToolUses()
 
@@ -431,7 +379,9 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                             case .delta(let delta):
                                 switch delta {
                                 case .thinkingDelta(let text):
-                                    continuation.yield(.running(step: .thinkingDelta(text)))
+                                    let deltaStep = AgentStep.thinkingDelta(text)
+                                    continuation.yield(.running(step: deltaStep))
+                                    await channel?.post(.step(deltaStep), from: "orchestrator")
                                 case .textDelta:
                                     break
                                 }
@@ -461,7 +411,9 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                             case .delta(let delta):
                                 switch delta {
                                 case .thinkingDelta(let text):
-                                    continuation.yield(.running(step: .thinkingDelta(text)))
+                                    let deltaStep = AgentStep.thinkingDelta(text)
+                                    continuation.yield(.running(step: deltaStep))
+                                    await channel?.post(.step(deltaStep), from: "orchestrator")
                                 case .textDelta:
                                     break
                                 }
@@ -523,20 +475,16 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                         var regularCalls: [ToolCall] = []
 
                         for call in toolCalls {
-                            continuation.yield(.running(step: .toolCall(call)))
-                            // interactiveToolMap（名前ベース）で確実に検出する
-                            // as? any InteractiveTool キャストは existential type erasure で失敗する可能性がある
+                            let toolCallStep = AgentStep.toolCall(call)
+                            continuation.yield(.running(step: toolCallStep))
+                            await channel?.post(.step(toolCallStep), from: "orchestrator")
+
                             if let tool = interactiveToolMap[call.name] {
                                 #if DEBUG
                                 print("[InteractiveTools] Detected interactive tool call: \(call.name)")
                                 #endif
                                 interactiveCall = (tool: tool, call: call)
                             } else {
-                                #if DEBUG
-                                if interactiveToolMap.keys.contains(where: { $0 == call.name }) {
-                                    print("[InteractiveTools] WARNING: Tool '\(call.name)' in map but lookup failed")
-                                }
-                                #endif
                                 regularCalls.append(call)
                             }
                         }
@@ -547,12 +495,6 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
 
                         if let policy = executionPolicy {
                             for call in regularCalls {
-                                // キャッシュチェック
-                                if await approvalCache.isApproved(call.name) {
-                                    approvedCalls.append(call)
-                                    continue
-                                }
-
                                 let decision = await policy.evaluate(call, tools: tools)
                                 switch decision {
                                 case .allow:
@@ -564,14 +506,17 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                         output: "Denied: \(reason)", isError: true
                                     )
                                     policyDeniedResults.append(result)
-                                    continuation.yield(.running(step: .toolResult(result)))
+                                    let resultStep = AgentStep.toolResult(result)
+                                    continuation.yield(.running(step: resultStep))
+                                    await channel?.post(.step(resultStep), from: "orchestrator")
 
                                 case .requiresApproval(let request):
-                                    status = .awaitingAuthorization(request: request)
-                                    continuation.yield(.awaitingAuthorization(request: request))
-
-                                    let response = await withCheckedContinuation { cont in
-                                        self.authorizationContinuation = cont
+                                    let response: ToolApprovalResponse
+                                    if let channel {
+                                        response = await channel.requestAuthorization(request, from: "orchestrator")
+                                    } else {
+                                        // チャネルなし → deny
+                                        response = .deny
                                     }
 
                                     guard status != .paused else {
@@ -580,13 +525,10 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                         return
                                     }
 
-                                    status = .running
-
                                     switch response {
                                     case .allow:
                                         approvedCalls.append(call)
                                     case .allowForSession:
-                                        await approvalCache.approve(call.name)
                                         approvedCalls.append(call)
                                     case .deny:
                                         let result = ToolResponse(
@@ -594,7 +536,9 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                             output: "Denied: User rejected the tool execution.", isError: true
                                         )
                                         policyDeniedResults.append(result)
-                                        continuation.yield(.running(step: .toolResult(result)))
+                                        let resultStep = AgentStep.toolResult(result)
+                                        continuation.yield(.running(step: resultStep))
+                                        await channel?.post(.step(resultStep), from: "orchestrator")
                                     }
                                 }
                             }
@@ -609,7 +553,9 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                 let result = await executeToolSafely(call, tools: tools)
                                 try Task.checkCancellation()
                                 results.append(result)
-                                continuation.yield(.running(step: .toolResult(result)))
+                                let resultStep = AgentStep.toolResult(result)
+                                continuation.yield(.running(step: resultStep))
+                                await channel?.post(.step(resultStep), from: "orchestrator")
                             }
                             toolResults = results + policyDeniedResults
                         } else {
@@ -636,7 +582,9 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                 }
                                 var indexed: [(Int, ToolResponse)] = []
                                 for await pair in group {
-                                    continuation.yield(.running(step: .toolResult(pair.1)))
+                                    let resultStep = AgentStep.toolResult(pair.1)
+                                    continuation.yield(.running(step: resultStep))
+                                    await channel?.post(.step(resultStep), from: "orchestrator")
                                     indexed.append(pair)
                                 }
                                 return indexed.sorted(by: { $0.0 < $1.0 }).map(\.1)
@@ -650,49 +598,36 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
 
                         // InteractiveTool 処理
                         if let (tool, call) = interactiveCall {
-                            interactiveCallCount += 1
-
-                            if let maxCalls = configuration.maxInteractiveCalls, interactiveCallCount > maxCalls {
-                                let syntheticResult = ToolResult.text("Proceed with your best judgment.")
+                            let request: InteractionRequest
+                            do {
+                                request = try tool.makeInteractionRequest(from: call.arguments)
+                            } catch {
                                 let result = ToolResponse(
                                     callId: call.id, name: call.name,
-                                    output: syntheticResult.stringValue, isError: false
+                                    output: "Error creating interaction request: \(error.localizedDescription)",
+                                    isError: true
                                 )
                                 addToolResults([result])
-                                continuation.yield(.running(step: .toolResult(result)))
-                                pendingInteractiveCall = nil
-                            } else {
-                                let request: InteractionRequest
-                                do {
-                                    request = try tool.makeInteractionRequest(from: call.arguments)
-                                } catch {
-                                    let result = ToolResponse(
-                                        callId: call.id, name: call.name,
-                                        output: "Error creating interaction request: \(error.localizedDescription)",
-                                        isError: true
-                                    )
-                                    addToolResults([result])
-                                    continuation.yield(.running(step: .toolResult(result)))
-                                    pendingInteractiveCall = nil
-                                    continue
-                                }
+                                let resultStep = AgentStep.toolResult(result)
+                                continuation.yield(.running(step: resultStep))
+                                await channel?.post(.step(resultStep), from: "orchestrator")
+                                continue
+                            }
 
-                                pendingInteractiveCall = (tool: tool, call: call)
-
-                                status = .awaitingInteraction(request: request)
-                                continuation.yield(.awaitingInteraction(request: request))
-
-                                let response = await withCheckedContinuation { cont in
-                                    self.responseContinuation = cont
-                                }
+                            if let channel {
+                                // チャネル経由: InteractionIntent で要求し block
+                                let intent = InteractionIntent(
+                                    toolCallId: call.id,
+                                    toolName: call.name,
+                                    request: request
+                                )
+                                let response = await channel.requestInteraction(intent, from: "orchestrator")
 
                                 guard status != .paused else {
                                     continuation.yield(.paused)
                                     continuation.finish()
                                     return
                                 }
-
-                                status = .running
 
                                 let toolResult = tool.makeToolResult(from: response)
                                 let toolResponse = ToolResponse(
@@ -701,8 +636,18 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                 )
                                 let mediaContents = response.content.mediaContents
                                 addToolResults([toolResponse], extraImages: mediaContents)
-                                continuation.yield(.running(step: .toolResult(toolResponse)))
-                                pendingInteractiveCall = nil
+                                let resultStep = AgentStep.toolResult(toolResponse)
+                                continuation.yield(.running(step: resultStep))
+                                await channel.post(.step(resultStep), from: "orchestrator")
+                            } else {
+                                // チャネルなし: フォールバック（自動応答）
+                                let syntheticResult = ToolResult.text("Proceed with your best judgment.")
+                                let result = ToolResponse(
+                                    callId: call.id, name: call.name,
+                                    output: syntheticResult.stringValue, isError: false
+                                )
+                                addToolResults([result])
+                                continuation.yield(.running(step: .toolResult(result)))
                             }
                         }
                     } else {

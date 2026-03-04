@@ -8,27 +8,10 @@ import LLMClient
 /// `ConversationalAgentSession<Client>` のジェネリクスを隠蔽し、
 /// UI 層が単一の参照で全プロバイダーのセッションを扱えるようにする。
 ///
-/// ## ターン間設定変更
+/// ## CollaborationChannel 連携
 ///
-/// `send()` / `resume()` の呼び出し間に設定を変更できます:
-///
-/// ```swift
-/// // モデルを変更
-/// await session.selectModel(id: "Haiku")
-///
-/// // ツールを変更
-/// var config = await session.turnConfiguration
-/// config.tools = newToolSet
-/// await session.setTurnConfiguration(config)
-///
-/// // 出力型を変更
-/// await session.selectOutputType(id: "research")
-///
-/// // 次の send/resume は変更された設定で実行される
-/// for try await event in await session.send("追加調査して") {
-///     // ...
-/// }
-/// ```
+/// `setChannel()` でチャンネルを設定し、UIAgent・Orchestrator との通信を行う。
+/// インタラクション応答・承認応答はチャンネル経由で送信する。
 public protocol ChatSessionProtocol: Sendable {
 
     // MARK: - Core Operations
@@ -42,12 +25,6 @@ public protocol ChatSessionProtocol: Sendable {
     /// 一時停止/エラーから再開
     func resume() async -> AsyncThrowingStream<SessionPhaseEvent, Error>
 
-    /// インタラクション応答を送信
-    func respond(_ response: InteractionResponse) async
-
-    /// ツール実行承認に応答
-    func respondToAuthorization(_ response: ToolApprovalResponse) async
-
     /// 実行中に割り込みメッセージを送信
     func interrupt(_ message: String) async
 
@@ -60,14 +37,17 @@ public protocol ChatSessionProtocol: Sendable {
     /// シリアライズされた会話メッセージを取得（セッション永続化用）
     func getSerializedMessages() async -> Data?
 
+    // MARK: - Channel
+
+    /// CollaborationChannel を設定
+    func setChannel(_ channel: CollaborationChannel) async
+
     // MARK: - Turn Configuration
 
     /// 現在のターン設定
     var turnConfiguration: TurnConfiguration { get async }
 
     /// ターン設定を更新
-    ///
-    /// 次の `send()` / `resume()` から反映されます。
     func setTurnConfiguration(_ config: TurnConfiguration) async
 
     // MARK: - Model Selection
@@ -79,8 +59,6 @@ public protocol ChatSessionProtocol: Sendable {
     var registeredModelIds: [String] { get async }
 
     /// モデルを選択
-    ///
-    /// 次の `send()` / `resume()` から反映されます。
     func selectModel(id: String) async
 
     // MARK: - Output Type Selection
@@ -92,7 +70,5 @@ public protocol ChatSessionProtocol: Sendable {
     var registeredOutputTypeIds: [String] { get async }
 
     /// 出力型を選択
-    ///
-    /// 次の `send()` / `resume()` から反映されます。
     func selectOutputType(id: String) async
 }

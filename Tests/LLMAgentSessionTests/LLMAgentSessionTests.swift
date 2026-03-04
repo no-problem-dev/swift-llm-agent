@@ -21,71 +21,43 @@ private struct TestOutput: StructuredProtocol, Equatable {
     #expect(status.canCancel == false)
 }
 
-// MARK: - SessionStatus Authorization Tests
+// MARK: - SessionStatus Tests
 
-@Test func testSessionStatusAwaitingAuthorization() {
-    let request = ToolApprovalRequest(
-        toolCall: ToolCall(id: "test-1", name: "write_file", arguments: Data()),
-        reason: "Outside workspace"
-    )
-    let status = SessionStatus.awaitingAuthorization(request: request)
-
+@Test func testSessionStatusRunning() {
+    let status = SessionStatus.running
     #expect(status.isActive == true)
-    #expect(status.isRunning == false)
+    #expect(status.isRunning == true)
     #expect(status.canCancel == true)
-    #expect(status.canRespondToAuthorization == true)
     #expect(status.canRun == false)
     #expect(status.canResume == false)
-    #expect(status.canRespond == false)
-    #expect(status.authorizationRequest != nil)
-    #expect(status.authorizationRequest?.toolCall.name == "write_file")
 }
 
-@Test func testSessionStatusIdleHasNoAuthorizationRequest() {
+@Test func testSessionStatusIdleProperties() {
     let status = SessionStatus.idle
-    #expect(status.canRespondToAuthorization == false)
-    #expect(status.authorizationRequest == nil)
+    #expect(status.canRun == true)
+    #expect(status.canResume == true)
+    #expect(status.canCancel == false)
+    #expect(status.isActive == false)
+    #expect(status.error == nil)
 }
 
-@Test func testSessionStatusRunningHasNoAuthorizationRequest() {
-    let status = SessionStatus.running
-    #expect(status.canRespondToAuthorization == false)
-    #expect(status.authorizationRequest == nil)
+@Test func testSessionStatusFailed() {
+    let status = SessionStatus.failed(error: "test error")
+    #expect(status.canResume == true)
+    #expect(status.canClear == true)
+    #expect(status.canRun == false)
+    #expect(status.error == "test error")
 }
 
 @Test func testSessionStatusDescription() {
-    let request = ToolApprovalRequest(
-        toolCall: ToolCall(id: "test-1", name: "edit_file", arguments: Data()),
-        reason: "test"
-    )
-    let status = SessionStatus.awaitingAuthorization(request: request)
-    #expect(status.description == "awaitingAuthorization(edit_file)")
-}
+    let idle = SessionStatus.idle
+    #expect(idle.description == "idle")
 
-// MARK: - SessionPhase Authorization Tests
+    let running = SessionStatus.running
+    #expect(running.description == "running")
 
-@Test func testSessionPhaseAwaitingAuthorization() {
-    let request = ToolApprovalRequest(
-        toolCall: ToolCall(id: "test-1", name: "write_file", arguments: Data()),
-        reason: "Outside workspace"
-    )
-    let phase: SessionPhase<TestOutput> = .awaitingAuthorization(request: request)
-
-    #expect(phase.isActive == true)
-    #expect(phase.isRunning == false)
-    #expect(phase.authorizationRequest != nil)
-    #expect(phase.authorizationRequest?.toolCall.name == "write_file")
-    #expect(phase.interactionRequest == nil)
-    #expect(phase.currentStep == nil)
-}
-
-@Test func testSessionPhaseDescription_authorization() {
-    let request = ToolApprovalRequest(
-        toolCall: ToolCall(id: "test-1", name: "create_directory", arguments: Data()),
-        reason: "test"
-    )
-    let phase: SessionPhase<TestOutput> = .awaitingAuthorization(request: request)
-    #expect(phase.description == "awaitingAuthorization(create_directory)")
+    let paused = SessionStatus.paused
+    #expect(paused.description == "paused")
 }
 
 // MARK: - SessionApprovalCache Tests
@@ -177,4 +149,11 @@ private struct TestOutput: StructuredProtocol, Equatable {
     if case .allow = allow { #expect(Bool(true)) } else { Issue.record("Expected .allow") }
     if case .allowForSession = allowForSession { #expect(Bool(true)) } else { Issue.record("Expected .allowForSession") }
     if case .deny = deny { #expect(Bool(true)) } else { Issue.record("Expected .deny") }
+}
+
+// MARK: - CollaborationChannel Tests
+
+@Test func testCollaborationChannelCreation() async {
+    let channel = CollaborationChannel()
+    await channel.close()
 }

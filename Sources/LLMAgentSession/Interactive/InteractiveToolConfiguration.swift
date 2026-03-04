@@ -5,15 +5,11 @@ import LLMClient
 
 /// インタラクティブツールの設定
 ///
-/// Layer 1（実行中インタラクション）と Layer 2（完了後ディレクティブ）で
-/// 使用するインタラクティブツールを定義する。
-///
-/// ## 2 層構成
+/// LLM のツールセットに注入するインタラクティブツールを定義する。
 ///
 /// - `priorityTools`: LLM のツールセットに注入される少数のインタラクティブツール。
 ///   エージェント実行中に LLM が呼び出し可能。
 /// - `catalog`: 全インタラクティブツールのカタログ。
-///   Layer 2 の DirectiveGenerator が利用可能な UX パターンとして参照する。
 ///
 /// ## 使用例
 ///
@@ -37,9 +33,6 @@ public struct InteractiveToolConfiguration: Sendable {
     public let priorityTools: [any InteractiveTool]
 
     /// 全インタラクティブツールのカタログ
-    ///
-    /// Layer 2 の DirectiveGenerator が、利用可能な UX パターンとして参照する。
-    /// priorityTools も含めて定義することを推奨。
     public let catalog: [any InteractiveTool]
 
     public init(

@@ -10,70 +10,39 @@ import LLMTool
 /// ジェネリックな `SessionPhase<Output>` を型消去された `SessionPhaseEvent` にマッピングし、
 /// UI 層がプロバイダーを意識せずにセッションを操作できるようにする。
 ///
-/// ## 設計
+/// ## CollaborationChannel 連携
 ///
-/// - **Actor**: スレッドセーフなミュータブル状態管理
-/// - **OutputRunner パターン**: `Output` ジェネリクスをクロージャでキャプチャし型消去
-/// - **レジストリパターン**: モデル・出力型を ID ベースで登録・選択
-///
-/// ## 使用例
-///
-/// ```swift
-/// let agentSession = ConversationalAgentSession(client: anthropicClient)
-///
-/// let chatSession = ChatSession(
-///     session: agentSession,
-///     initialModelId: "Sonnet",
-///     initialOutputTypeId: "research",
-///     initialTurnConfiguration: turnConfig
-/// )
-///
-/// // モデルを登録
-/// await chatSession.registerModel(id: "Sonnet", model: .sonnet)
-/// await chatSession.registerModel(id: "Haiku", model: .haiku)
-///
-/// // 出力型を登録
-/// await chatSession.registerOutputType(id: "research", type: ResearchResult.self) {
-///     $0.toStructuredResult()
-/// }
-///
-/// // 使用
-/// for try await event in await chatSession.send("調査して") { ... }
-///
-/// // ターン間でモデルを変更
-/// await chatSession.selectModel(id: "Haiku")
-/// for try await event in await chatSession.send("要約して") { ... }
-/// ```
+/// `setChannel()` で CollaborationChannel を設定すると、内部の ConversationalAgentSession に
+/// チャンネルが伝播される。`mapToEvents` 内で `.completed` を検出したとき、
+/// チャンネル経由で `turnCompleted` / `contentReady` を投稿する。
 public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
     where Client.Model: Sendable
 {
     // MARK: - OutputRunner
 
     /// 型消去された出力処理クロージャ
-    ///
-    /// `Output` ジェネリクスを `registerOutputType` 時にクロージャ内にキャプチャし、
-    /// `send()` / `resume()` 時に型消去された `SessionPhaseEvent` ストリームを返す。
-    ///
-    /// `makeOutputRunner` ファクトリメソッドで生成し、init 時または `registerOutputType` で登録する。
     public struct OutputRunner: @unchecked Sendable {
         let run: (
             ConversationalAgentSession<Client>,
             LLMInput,
             Client.Model,
-            TurnConfiguration
+            TurnConfiguration,
+            CollaborationChannel?
         ) -> AsyncThrowingStream<SessionPhaseEvent, Error>
 
         let resume: (
             ConversationalAgentSession<Client>,
             Client.Model,
-            TurnConfiguration
+            TurnConfiguration,
+            CollaborationChannel?
         ) -> AsyncThrowingStream<SessionPhaseEvent, Error>
 
         let runWithPrefill: (
             ConversationalAgentSession<Client>,
             [LLMMessage],
             Client.Model,
-            TurnConfiguration
+            TurnConfiguration,
+            CollaborationChannel?
         ) -> AsyncThrowingStream<SessionPhaseEvent, Error>
     }
 
@@ -96,17 +65,11 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
     /// 出力型レジストリ（ID → OutputRunner）
     private var outputRunnerRegistry: [String: OutputRunner]
 
+    /// CollaborationChannel（チャンネル連携用）
+    private var channel_: CollaborationChannel?
+
     // MARK: - Initialization
 
-    /// ChatSession を初期化
-    ///
-    /// - Parameters:
-    ///   - session: 会話セッション
-    ///   - initialModelId: 初期モデル ID
-    ///   - initialOutputTypeId: 初期出力型 ID
-    ///   - initialTurnConfiguration: 初期ターン設定
-    ///   - models: 初期モデルレジストリ（ID → Model）
-    ///   - outputRunners: 初期出力型レジストリ（ID → OutputRunner）
     public init(
         session: ConversationalAgentSession<Client>,
         initialModelId: String,
@@ -125,21 +88,10 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
 
     // MARK: - Registration
 
-    /// モデルを登録
-    ///
-    /// - Parameters:
-    ///   - id: モデル ID（表示名など）
-    ///   - model: モデル値
     public func registerModel(id: String, model: Client.Model) {
         modelRegistry[id] = model
     }
 
-    /// 出力型を登録
-    ///
-    /// - Parameters:
-    ///   - id: 出力型 ID
-    ///   - type: 出力の型
-    ///   - render: 出力を `StructuredResult` に変換するクロージャ
     public func registerOutputType<Output: StructuredProtocol>(
         id: String,
         type: Output.Type,
@@ -156,7 +108,8 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
             return AsyncThrowingStream { $0.finish(throwing: ChatSessionError.configurationMissing) }
         }
         let config = turnConfig_
-        return runner.run(session, input, model, config)
+        let channel = channel_
+        return runner.run(session, input, model, config, channel)
     }
 
     public func sendWithPrefill(_ prefill: [LLMMessage]) -> AsyncThrowingStream<SessionPhaseEvent, Error> {
@@ -165,7 +118,8 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
             return AsyncThrowingStream { $0.finish(throwing: ChatSessionError.configurationMissing) }
         }
         let config = turnConfig_
-        return runner.runWithPrefill(session, prefill, model, config)
+        let channel = channel_
+        return runner.runWithPrefill(session, prefill, model, config, channel)
     }
 
     public func resume() -> AsyncThrowingStream<SessionPhaseEvent, Error> {
@@ -174,15 +128,8 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
             return AsyncThrowingStream { $0.finish(throwing: ChatSessionError.configurationMissing) }
         }
         let config = turnConfig_
-        return runner.resume(session, model, config)
-    }
-
-    public func respond(_ response: InteractionResponse) async {
-        await session.respond(response)
-    }
-
-    public func respondToAuthorization(_ response: ToolApprovalResponse) async {
-        await session.respondToAuthorization(response)
+        let channel = channel_
+        return runner.resume(session, model, config, channel)
     }
 
     public func interrupt(_ message: String) async {
@@ -200,6 +147,13 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
     public func getSerializedMessages() async -> Data? {
         let messages = await session.getMessages()
         return try? JSONEncoder().encode(messages)
+    }
+
+    // MARK: - ChatSessionProtocol: Channel
+
+    public func setChannel(_ channel: CollaborationChannel) async {
+        self.channel_ = channel
+        await session.setChannel(channel)
     }
 
     // MARK: - ChatSessionProtocol: Turn Configuration
@@ -244,40 +198,36 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
 
     // MARK: - OutputRunner Factory
 
-    /// OutputRunner を作成する型消去ファクトリメソッド
-    ///
-    /// Actor 隔離に依存しないため `nonisolated` かつ `static`。
-    /// init 時のレジストリ構築や、動的な `registerOutputType` の両方で使用する。
     nonisolated public static func makeOutputRunner<Output: StructuredProtocol>(
         outputType: Output.Type,
         renderOutput: @Sendable @escaping (Output) -> StructuredResult
     ) -> OutputRunner {
         OutputRunner(
-            run: { session, input, model, turnConfig in
+            run: { session, input, model, turnConfig, channel in
                 let typedStream = session.run(
                     input: input,
                     model: model,
                     turn: turnConfig,
                     outputType: Output.self
                 )
-                return Self.mapToEvents(typedStream, renderOutput: renderOutput)
+                return Self.mapToEvents(typedStream, renderOutput: renderOutput, channel: channel)
             },
-            resume: { session, model, turnConfig in
+            resume: { session, model, turnConfig, channel in
                 let typedStream = session.resume(
                     model: model,
                     turn: turnConfig,
                     outputType: Output.self
                 )
-                return Self.mapToEvents(typedStream, renderOutput: renderOutput)
+                return Self.mapToEvents(typedStream, renderOutput: renderOutput, channel: channel)
             },
-            runWithPrefill: { session, prefill, model, turnConfig in
+            runWithPrefill: { session, prefill, model, turnConfig, channel in
                 let typedStream = session.runWithPrefill(
                     prefill: prefill,
                     model: model,
                     turn: turnConfig,
                     outputType: Output.self
                 )
-                return Self.mapToEvents(typedStream, renderOutput: renderOutput)
+                return Self.mapToEvents(typedStream, renderOutput: renderOutput, channel: channel)
             }
         )
     }
@@ -286,14 +236,29 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
 
     private static func mapToEvents<Output: StructuredProtocol>(
         _ stream: AsyncThrowingStream<SessionPhase<Output>, Error>,
-        renderOutput: @Sendable @escaping (Output) -> StructuredResult
+        renderOutput: @Sendable @escaping (Output) -> StructuredResult,
+        channel: CollaborationChannel?
     ) -> AsyncThrowingStream<SessionPhaseEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
                     for try await phase in stream {
                         if Task.isCancelled { break }
-                        continuation.yield(mapPhase(phase, renderOutput: renderOutput))
+                        let event = mapPhase(phase, renderOutput: renderOutput)
+                        continuation.yield(event)
+
+                        // チャネルに完了イベントを送信
+                        if let channel {
+                            switch event {
+                            case .completed(let result):
+                                await channel.post(.turnCompleted(result), from: "orchestrator")
+                                await channel.post(.contentReady(
+                                    ContentIntent(content: result.markdown)
+                                ), from: "orchestrator")
+                            default:
+                                break
+                            }
+                        }
                     }
                     continuation.finish()
                 } catch {
@@ -313,10 +278,6 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
             .idle
         case .running(let step):
             mapStep(step)
-        case .awaitingInteraction(let request):
-            .awaitingInteraction(request: request)
-        case .awaitingAuthorization(let request):
-            .awaitingAuthorization(request: request)
         case .paused:
             .paused
         case .completed(let output):

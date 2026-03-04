@@ -4,6 +4,9 @@ import Foundation
 ///
 /// `ConversationalAgentSession<Client>` の `SessionPhase<Output>` を
 /// 型消去し、UI 層が単一の型で全プロバイダーを扱えるようにする。
+///
+/// インタラクション・承認・ディレクティブは UIAgentEvent 経由で配信されるため、
+/// このイベントには含まれない。
 public enum SessionPhaseEvent: Sendable {
     /// アイドル状態
     case idle
@@ -26,26 +29,11 @@ public enum SessionPhaseEvent: Sendable {
     /// 割り込みメッセージ
     case interrupted(String)
 
-    /// インタラクション待ち（Layer 1: InteractiveTool 起因）
-    ///
-    /// `ask_user` を含む全てのインタラクティブツールがこのイベントを使用する。
-    case awaitingInteraction(request: InteractionRequest)
-
-    /// ツール実行承認待ち（ToolExecutionPolicy 起因）
-    ///
-    /// ポリシーがユーザー承認を要求した場合に使用する。
-    case awaitingAuthorization(request: ToolApprovalRequest)
-
     /// 一時停止
     case paused
 
     /// 完了
     case completed(result: StructuredResult)
-
-    /// ディレクティブ付き完了（Layer 2: DirectiveGenerator 起因）
-    ///
-    /// セッション完了後に DirectiveGenerator が次のインタラクション提案を生成した場合に使用する。
-    case directive(result: StructuredResult, request: InteractionRequest)
 
     /// 失敗
     case failed(error: String)
