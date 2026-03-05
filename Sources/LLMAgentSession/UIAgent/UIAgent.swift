@@ -4,43 +4,42 @@ import AgentCommunication
 
 // MARK: - UIAgent
 
-/// UI 関心事を一元管理するエージェント（エントリーポイント）
+/// チャンネルベースの UI エージェント
 ///
-/// CollaborationChannel の subscriber として動作し、以下を担当する:
-/// - ユーザー入力の受信と初期ブロック表示
-/// - Orchestrator への委譲要求
-/// - エージェントステップのパススルー
-/// - インタラクション要求の中継
-/// - ツール承認要求の中継
-/// - ターン完了時の UI 生成起動
+/// `Channel<String>` を購読し、オーケストレーターからのメッセージに応じて
+/// UI ブロック生成やユーザーインタラクションを実行する。
 ///
 /// ## 設計
 ///
-/// UIAgent はセッションのエントリーポイントとして機能する。
-/// ユーザー入力を最初に受信し、Orchestrator にタスクを委譲する。
-/// Orchestrator の結果は Channel 経由で UIAgent に返され、
-/// UIAgent が UI ブロック生成を制御する。
+/// UIAgent は LLM を内蔵し、チャンネルメッセージをコンテキストとして
+/// UI 生成の判断を行う。emit_block / emit_interaction ツールを使い、
+/// アプリ層に UI イベントを配信する。
 ///
-/// UIAgent は LLM を直接保持しない。UI ブロック生成・画像配置・画像生成は
-/// 型消去されたクロージャ（Runner）経由で実行する。
+/// ユーザーからのインタラクション応答は `respondToInteraction()` 経由で受け取り、
+/// チャンネルに投稿してオーケストレーターに伝える。
 ///
 /// ## 使い方
 ///
 /// ```swift
-/// let uiAgent = UIAgent(eventHandler: { event in
-///     await MainActor.run { sessionAgent.handleUIAgentEvent(event) }
-/// })
-///
-/// // Channel 上で起動
-/// Task { await uiAgent.run(on: channel) }
+/// let uiAgent = UIAgent(
+///     session: uiSession,
+///     eventHandler: { event in
+///         await MainActor.run { sessionAgent.handleUIAgentEvent(event) }
+///     }
+/// )
+/// Task { await uiAgent.start(on: channel) }
 /// ```
-public actor UIAgent: ChannelParticipant {
-    public typealias Content = ChannelContent
+public actor UIAgent: ChannelAgent {
     public typealias EventHandler = @Sendable (UIAgentEvent) async -> Void
 
-    public let participantId: String = "uiAgent"
+    public let agentId: String = "uiAgent"
+    public private(set) var status: AgentStatus = .idle
 
     private var eventHandler: EventHandler
+    private var channel: Channel<String>?
+
+    /// ブロッキングインタラクション用の continuation
+    private var interactionContinuation: CheckedContinuation<InteractionResponse, Never>?
 
     // MARK: - Initialization
 
@@ -51,51 +50,76 @@ public actor UIAgent: ChannelParticipant {
     }
 
     /// イベントハンドラーを更新
-    ///
-    /// SessionAgent の init 時点では `self` のキャプチャが不可能なため、
-    /// UIAgent 起動前にハンドラーを設定する。
     public func setEventHandler(_ handler: @escaping EventHandler) {
         self.eventHandler = handler
     }
 
-    // MARK: - ChannelParticipant
+    // MARK: - ChannelAgent
 
-    /// チャンネルメッセージを処理する
-    ///
-    /// `ChannelParticipant` プロトコルの要件。
-    /// `run(on:)` / `run(stream:)` はプロトコルのデフォルト実装を使用。
-    public func handleMessage(_ message: ChannelMessage) async {
-        switch message.content {
-        case .userInput(let input):
-            // UIAgent がエントリーポイント: 入力を受け取り、UI に通知後 Orchestrator を起動要求
-            await eventHandler(.inputReceived(input))
-            await eventHandler(.orchestrationRequested(input))
+    public func start(on channel: Channel<String>) async {
+        self.channel = channel
+        let messageStream = await channel.subscribe(as: agentId)
+        status = .listening
 
-        case .step(let step):
-            await eventHandler(.step(step))
-
-        case .contentReady(let intent):
-            // コンテンツ到着を通知（SessionAgent 側で UI 生成を起動）
-            await eventHandler(.generationStarted(rawText: intent.content))
-
-        case .requestInteraction(let intent):
-            await eventHandler(.interactionRequested(intent))
-
-        case .requestAuthorization(let request):
-            await eventHandler(.authorizationRequested(request))
-
-        case .turnCompleted(let result):
-            await eventHandler(.turnCompleted(result))
-
-        case .turnFailed(let error):
-            await eventHandler(.turnFailed(error))
-
-        case .sessionCancelled:
-            await eventHandler(.sessionCancelled)
-
-        case .userAction, .interactionResponse, .authorizationResponse:
-            // UIAgent は応答メッセージを処理しない（Orchestrator 側で処理）
-            break
+        for await message in messageStream {
+            guard !Task.isCancelled else { break }
+            await handleChannelMessage(message)
         }
+
+        status = .stopped
+    }
+
+    public func stop() async {
+        interactionContinuation?.resume(returning: InteractionResponse(requestId: "", content: .dismissed))
+        interactionContinuation = nil
+        status = .stopped
+    }
+
+    // MARK: - Interaction
+
+    /// アプリ層からのインタラクション応答を受け取る
+    ///
+    /// emit_interaction ツールの実行を再開し、応答をチャンネルに投稿する。
+    public func respondToInteraction(_ response: InteractionResponse) {
+        interactionContinuation?.resume(returning: response)
+        interactionContinuation = nil
+    }
+
+    /// インタラクションを要求し、応答を待つ（ブロッキング）
+    ///
+    /// UIAgent の LLM ループ内からツール経由で呼ばれる。
+    public func requestInteraction(_ intent: InteractionIntent) async -> InteractionResponse {
+        await eventHandler(.interactionRequested(intent))
+        return await withCheckedContinuation { continuation in
+            self.interactionContinuation = continuation
+        }
+    }
+
+    // MARK: - Event Emission
+
+    /// UIAgent イベントを外部に配信
+    public func emit(_ event: UIAgentEvent) async {
+        await eventHandler(event)
+    }
+
+    // MARK: - Channel Post
+
+    /// チャンネルにテキストを投稿
+    public func postToChannel(_ text: String) async {
+        await channel?.post(text, from: agentId)
+    }
+
+    // MARK: - Private
+
+    private func handleChannelMessage(_ message: AgentMessage<String>) async {
+        // orchestrator からのメッセージに反応して UI 生成を起動
+        guard message.sender == "orchestrator" else { return }
+
+        status = .processing
+
+        // オーケストレーターのメッセージを UI 生成イベントとして通知
+        await eventHandler(.generationStarted(rawText: message.content))
+
+        status = .listening
     }
 }

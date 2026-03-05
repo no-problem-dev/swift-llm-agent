@@ -20,22 +20,13 @@ private enum FinalOutputConstants {
 
 // MARK: - ConversationalAgentSession
 
-/// 会話型エージェントセッション
+/// 会話型エージェントセッション（純粋 LLM ループエンジン）
 ///
 /// セッションは**会話履歴のみ**を保持し、ツール・システムプロンプト・
 /// エージェント設定はターンごとに `TurnConfiguration` として渡されます。
 ///
-/// ## 設計原則
-///
-/// Claude Code / Agent SDK の設計に倣い、**セッション = 会話履歴の管理者**、
-/// **設定 = ターンごとのパラメータ**として分離しています。
-/// これにより、ターン間でモデル・ツール・システムプロンプト・出力型を自由に変更できます。
-///
-/// ## CollaborationChannel 連携
-///
-/// `setChannel()` でチャンネルを設定すると、エージェントループ中の
-/// InteractiveTool / ToolApproval 処理がチャンネル経由に切り替わる。
-/// ステップイベントもチャンネルに投稿される。
+/// チャンネル連携やインタラクションは `OrchestratorAgent` / `UIAgent` が担当し、
+/// このクラスは LLM ループの実行に専念します。
 public actor ConversationalAgentSession<Client: AgentCapableClient>: ConversationalAgentSessionProtocol
     where Client.Model: Sendable
 {
@@ -48,16 +39,8 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
     /// 現在のセッション状態
     public private(set) var status: SessionStatus = .idle
 
-    /// コラボレーションチャンネル
-    private var channel: CollaborationChannel?
-
     // MARK: - Initialization
 
-    /// セッションを初期化
-    ///
-    /// - Parameters:
-    ///   - client: LLM クライアント
-    ///   - initialMessages: 復元する会話履歴（オプション）
     public init(
         client: Client,
         initialMessages: [LLMMessage] = []
@@ -76,10 +59,13 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         messages.filter { $0.role == .user }.count
     }
 
-    // MARK: - Protocol Conformance: Channel
+    // MARK: - Protocol Conformance: Context Injection
 
-    public func setChannel(_ channel: CollaborationChannel) {
-        self.channel = channel
+    /// チャンネルメッセージを会話履歴に挿入
+    ///
+    /// 実行中のループがある場合、次の LLM コールに自動的に含まれる。
+    public func injectContext(_ text: String) {
+        messages.append(LLMMessage.user(text))
     }
 
     // MARK: - Protocol Conformance: Interrupt API
@@ -103,7 +89,6 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         guard status.canClear else { return }
         messages.removeAll()
         interruptQueue.removeAll()
-        channel = nil
         status = .idle
     }
 
@@ -111,7 +96,6 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         guard status.canCancel else { return }
         status = .paused
         interruptQueue.removeAll()
-        await channel?.close()
     }
 
     // MARK: - Protocol Conformance: Core API
@@ -190,7 +174,6 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         }
         messages.append(contentsOf: prefill)
         status = .running
-        // .userMessage は yield しない（UI にユーザーメッセージを表示しないため）
         await runAgentLoop(model: model, turn: turn, outputType: Output.self, continuation: continuation)
     }
 
@@ -220,7 +203,6 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         status = .running
         let step = AgentStep.userMessage(continueMsg)
         continuation.yield(.running(step: step))
-        await channel?.post(.step(step), from: "orchestrator")
 
         await runAgentLoop(
             model: model,
@@ -249,7 +231,6 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         status = .running
         let step = AgentStep.userMessage(userMessageText)
         continuation.yield(.running(step: step))
-        await channel?.post(.step(step), from: "orchestrator")
 
         await runAgentLoop(
             model: model,
@@ -297,29 +278,9 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         outputType: Output.Type,
         continuation: AsyncThrowingStream<SessionPhase<Output>, Error>.Continuation
     ) async {
-        // TurnConfiguration からローカル変数に展開
-        var tools = turn.tools
-        var effectiveSystemPrompt = turn.systemPrompt
+        let tools = turn.tools
+        let systemPrompt = turn.systemPrompt
         let executionPolicy = turn.executionPolicy
-        // InteractiveTool の名前 → 実体マッピング（as? キャスト回避用）
-        var interactiveToolMap: [String: any InteractiveTool] = [:]
-        if let interactiveConfig = turn.interactiveTools {
-            for tool in interactiveConfig.priorityTools {
-                tools = tools.appending(tool)
-                interactiveToolMap[tool.toolName] = tool
-            }
-            #if DEBUG
-            let toolNames = Array(interactiveToolMap.keys)
-            print("[InteractiveTools] Injected \(toolNames.count) tools: \(toolNames.joined(separator: ", "))")
-            #endif
-            // インタラクティブツールが利用可能な場合、ガイダンスを自動追加
-            if let base = effectiveSystemPrompt {
-                effectiveSystemPrompt = base.appending(InteractiveToolConfiguration.defaultGuidance)
-            } else {
-                effectiveSystemPrompt = SystemPrompt { InteractiveToolConfiguration.defaultGuidance }
-            }
-        }
-        let systemPrompt = effectiveSystemPrompt
         let configuration = turn.agentConfiguration
 
         var step = 0
@@ -340,7 +301,6 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                     messages.append(LLMMessage.user(softLimitMsg))
                     let interruptedStep = AgentStep.interrupted(softLimitMsg)
                     continuation.yield(.running(step: interruptedStep))
-                    await channel?.post(.step(interruptedStep), from: "orchestrator")
                 }
 
                 // 割り込みチェックポイント（toolUse フェーズのみ）
@@ -349,14 +309,12 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                         messages.append(LLMMessage.user(interruptMsg))
                         let interruptedStep = AgentStep.interrupted(interruptMsg)
                         continuation.yield(.running(step: interruptedStep))
-                        await channel?.post(.step(interruptedStep), from: "orchestrator")
                     }
                     interruptQueue.removeAll()
                 }
 
                 let thinkingStep = AgentStep.thinking
                 continuation.yield(.running(step: thinkingStep))
-                await channel?.post(.step(thinkingStep), from: "orchestrator")
 
                 messages.sanitizeOrphanedToolUses()
 
@@ -381,7 +339,6 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                 case .thinkingDelta(let text):
                                     let deltaStep = AgentStep.thinkingDelta(text)
                                     continuation.yield(.running(step: deltaStep))
-                                    await channel?.post(.step(deltaStep), from: "orchestrator")
                                 case .textDelta:
                                     break
                                 }
@@ -413,7 +370,6 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                 case .thinkingDelta(let text):
                                     let deltaStep = AgentStep.thinkingDelta(text)
                                     continuation.yield(.running(step: deltaStep))
-                                    await channel?.post(.step(deltaStep), from: "orchestrator")
                                 case .textDelta:
                                     break
                                 }
@@ -439,7 +395,6 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
 
                     if toolCalls.isEmpty {
                         if configuration.skipFinalOutput {
-                            // skipFinalOutput: テキスト応答を JSON デコードせずそのまま返す
                             let text = extractTextContent(from: response)
                             status = .idle
                             continuation.yield(.completedText(text: text))
@@ -471,35 +426,21 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
 
                     // ツール呼び出しがある場合
                     if configuration.autoExecuteTools {
-                        var interactiveCall: (tool: any InteractiveTool, call: ToolCall)?
-                        var regularCalls: [ToolCall] = []
-
                         for call in toolCalls {
                             let toolCallStep = AgentStep.toolCall(call)
                             continuation.yield(.running(step: toolCallStep))
-                            await channel?.post(.step(toolCallStep), from: "orchestrator")
-
-                            if let tool = interactiveToolMap[call.name] {
-                                #if DEBUG
-                                print("[InteractiveTools] Detected interactive tool call: \(call.name)")
-                                #endif
-                                interactiveCall = (tool: tool, call: call)
-                            } else {
-                                regularCalls.append(call)
-                            }
                         }
 
-                        // ポリシー評価 → 通常ツールを実行
+                        // ポリシー評価
                         var approvedCalls: [ToolCall] = []
                         var policyDeniedResults: [ToolResponse] = []
 
                         if let policy = executionPolicy {
-                            for call in regularCalls {
+                            for call in toolCalls {
                                 let decision = await policy.evaluate(call, tools: tools)
                                 switch decision {
                                 case .allow:
                                     approvedCalls.append(call)
-
                                 case .deny(let reason):
                                     let result = ToolResponse(
                                         callId: call.id, name: call.name,
@@ -508,44 +449,23 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                     policyDeniedResults.append(result)
                                     let resultStep = AgentStep.toolResult(result)
                                     continuation.yield(.running(step: resultStep))
-                                    await channel?.post(.step(resultStep), from: "orchestrator")
-
-                                case .requiresApproval(let request):
-                                    let response: ToolApprovalResponse
-                                    if let channel {
-                                        response = await channel.requestAuthorization(request, from: "orchestrator")
-                                    } else {
-                                        // チャネルなし → deny
-                                        response = .deny
-                                    }
-
-                                    guard status != .paused else {
-                                        continuation.yield(.paused)
-                                        continuation.finish()
-                                        return
-                                    }
-
-                                    switch response {
-                                    case .allow:
-                                        approvedCalls.append(call)
-                                    case .allowForSession:
-                                        approvedCalls.append(call)
-                                    case .deny:
-                                        let result = ToolResponse(
-                                            callId: call.id, name: call.name,
-                                            output: "Denied: User rejected the tool execution.", isError: true
-                                        )
-                                        policyDeniedResults.append(result)
-                                        let resultStep = AgentStep.toolResult(result)
-                                        continuation.yield(.running(step: resultStep))
-                                        await channel?.post(.step(resultStep), from: "orchestrator")
-                                    }
+                                case .requiresApproval:
+                                    // チャンネルアーキテクチャでは承認はエージェント層で処理
+                                    // ここでは deny にフォールバック
+                                    let result = ToolResponse(
+                                        callId: call.id, name: call.name,
+                                        output: "Denied: Requires approval (not available in current context)", isError: true
+                                    )
+                                    policyDeniedResults.append(result)
+                                    let resultStep = AgentStep.toolResult(result)
+                                    continuation.yield(.running(step: resultStep))
                                 }
                             }
                         } else {
-                            approvedCalls = regularCalls
+                            approvedCalls = toolCalls
                         }
 
+                        // ツール実行
                         let toolResults: [ToolResponse]
                         if approvedCalls.count <= 1 {
                             var results: [ToolResponse] = []
@@ -555,7 +475,6 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                 results.append(result)
                                 let resultStep = AgentStep.toolResult(result)
                                 continuation.yield(.running(step: resultStep))
-                                await channel?.post(.step(resultStep), from: "orchestrator")
                             }
                             toolResults = results + policyDeniedResults
                         } else {
@@ -584,7 +503,6 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                 for await pair in group {
                                     let resultStep = AgentStep.toolResult(pair.1)
                                     continuation.yield(.running(step: resultStep))
-                                    await channel?.post(.step(resultStep), from: "orchestrator")
                                     indexed.append(pair)
                                 }
                                 return indexed.sorted(by: { $0.0 < $1.0 }).map(\.1)
@@ -594,61 +512,6 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
 
                         if !toolResults.isEmpty {
                             addToolResults(toolResults)
-                        }
-
-                        // InteractiveTool 処理
-                        if let (tool, call) = interactiveCall {
-                            let request: InteractionRequest
-                            do {
-                                request = try tool.makeInteractionRequest(from: call.arguments)
-                            } catch {
-                                let result = ToolResponse(
-                                    callId: call.id, name: call.name,
-                                    output: "Error creating interaction request: \(error.localizedDescription)",
-                                    isError: true
-                                )
-                                addToolResults([result])
-                                let resultStep = AgentStep.toolResult(result)
-                                continuation.yield(.running(step: resultStep))
-                                await channel?.post(.step(resultStep), from: "orchestrator")
-                                continue
-                            }
-
-                            if let channel {
-                                // チャネル経由: InteractionIntent で要求し block
-                                let intent = InteractionIntent(
-                                    toolCallId: call.id,
-                                    toolName: call.name,
-                                    request: request
-                                )
-                                let response = await channel.requestInteraction(intent, from: "orchestrator")
-
-                                guard status != .paused else {
-                                    continuation.yield(.paused)
-                                    continuation.finish()
-                                    return
-                                }
-
-                                let toolResult = tool.makeToolResult(from: response)
-                                let toolResponse = ToolResponse(
-                                    callId: call.id, name: call.name,
-                                    output: toolResult.stringValue, isError: toolResult.isError
-                                )
-                                let mediaContents = response.content.mediaContents
-                                addToolResults([toolResponse], extraImages: mediaContents)
-                                let resultStep = AgentStep.toolResult(toolResponse)
-                                continuation.yield(.running(step: resultStep))
-                                await channel.post(.step(resultStep), from: "orchestrator")
-                            } else {
-                                // チャネルなし: フォールバック（自動応答）
-                                let syntheticResult = ToolResult.text("Proceed with your best judgment.")
-                                let result = ToolResponse(
-                                    callId: call.id, name: call.name,
-                                    output: syntheticResult.stringValue, isError: false
-                                )
-                                addToolResults([result])
-                                continuation.yield(.running(step: .toolResult(result)))
-                            }
                         }
                     } else {
                         continuation.finish()
@@ -677,7 +540,6 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
             // ハードリミット到達: graceful degradation
             let lastText = extractLastAssistantText()
             if configuration.skipFinalOutput, !lastText.isEmpty {
-                // skipFinalOutput: プレーンテキストとして返す
                 status = .idle
                 continuation.yield(.completedText(text: lastText))
                 continuation.finish()
@@ -745,7 +607,6 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                 isError: result.isError
             )
         }
-        // 各 ToolResponse のメディアを集約 + 追加画像
         let allMedia = results.flatMap(\.mediaContents) + extraImages
         contents += allMedia.map { .image($0) }
         messages.append(LLMMessage(role: .user, contents: contents))

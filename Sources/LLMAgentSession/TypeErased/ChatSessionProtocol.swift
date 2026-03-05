@@ -7,11 +7,6 @@ import LLMClient
 ///
 /// `ConversationalAgentSession<Client>` のジェネリクスを隠蔽し、
 /// UI 層が単一の参照で全プロバイダーのセッションを扱えるようにする。
-///
-/// ## CollaborationChannel 連携
-///
-/// `setChannel()` でチャンネルを設定し、UIAgent・Orchestrator との通信を行う。
-/// インタラクション応答・承認応答はチャンネル経由で送信する。
 public protocol ChatSessionProtocol: Sendable {
 
     // MARK: - Core Operations
@@ -37,10 +32,11 @@ public protocol ChatSessionProtocol: Sendable {
     /// シリアライズされた会話メッセージを取得（セッション永続化用）
     func getSerializedMessages() async -> Data?
 
-    // MARK: - Channel
-
-    /// CollaborationChannel を設定
-    func setChannel(_ channel: CollaborationChannel) async
+    /// コンテキストメッセージを会話履歴に挿入
+    ///
+    /// チャンネルメッセージを LLM コンテキストに挿入するために使用。
+    /// 実行中のループがある場合、次の LLM コールに自動的に含まれる。
+    func injectContext(_ text: String) async
 
     // MARK: - Turn Configuration
 

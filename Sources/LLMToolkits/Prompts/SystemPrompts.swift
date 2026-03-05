@@ -174,9 +174,9 @@ public enum AgentBehaviors {
     /// インタラクションツールが利用可能な場合は、テキスト応答ではなくツール経由で問い合わせることを指示します。
     public static let autonomy = PromptComponent.behavior(
         "Act autonomously and make reasonable decisions on your own. " +
+        "When you need user input, use the post_to_channel tool to ask " +
+        "the UIAgent to interact with the user on your behalf. " +
         "Do NOT generate plain-text questions or option lists in your response. " +
-        "When you need user input, you MUST use the appropriate interaction tool " +
-        "(request_user_input) instead of writing questions or choices as text. " +
         "When the task is clear and you can proceed without user input, " +
         "proceed with your best judgment."
     )
@@ -204,10 +204,13 @@ public enum AgentBehaviors {
 
     /// インタラクティブツール使用ガイダンス
     ///
-    /// `request_user_input` が利用可能な場合に、
-    /// LLM が適切にユーザーとインタラクトするための行動指示。
-    /// `InteractiveToolConfiguration.defaultGuidance` を参照。
-    public static let interactiveGuidance = InteractiveToolConfiguration.defaultGuidance
+    /// ユーザーに質問や入力を求める際の行動指示。
+    /// チャンネルアーキテクチャでは post_to_channel 経由で UIAgent に依頼する。
+    public static let interactiveGuidance = PromptComponent.behavior(
+        "ユーザーに質問や入力を求めるときは post_to_channel ツールを使い、UIAgent に依頼する。" +
+        "テキストで質問を直接書かない。\n" +
+        "タスクが明確で進行できる場合は、質問せずに進める。"
+    )
 
     /// 統合エージェント行動指示
     ///

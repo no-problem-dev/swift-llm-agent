@@ -14,11 +14,6 @@ import LLMAgent
 ///
 /// セッションは**会話履歴のみ**を保持し、それ以外の設定は
 /// `TurnConfiguration` として `run()` / `resume()` の呼び出し時に渡されます。
-///
-/// ## CollaborationChannel 連携
-///
-/// `setChannel()` でチャンネルを設定すると、InteractiveTool / ToolApproval の
-/// 処理がチャンネル経由に切り替わる。
 public protocol ConversationalAgentSessionProtocol<Client>: Actor {
     associatedtype Client: AgentCapableClient where Client.Model: Sendable
 
@@ -28,10 +23,10 @@ public protocol ConversationalAgentSessionProtocol<Client>: Actor {
     var running: Bool { get async }
     var turnCount: Int { get async }
 
-    // MARK: - Channel
+    // MARK: - Context Injection
 
-    /// コラボレーションチャンネルを設定
-    func setChannel(_ channel: CollaborationChannel) async
+    /// チャンネルメッセージを会話履歴に挿入
+    func injectContext(_ text: String) async
 
     // MARK: - Interrupt API
 

@@ -151,9 +151,9 @@ private struct TestOutput: StructuredProtocol, Equatable {
     if case .deny = deny { #expect(Bool(true)) } else { Issue.record("Expected .deny") }
 }
 
-// MARK: - CollaborationChannel Tests
+// MARK: - SessionChannel Tests
 
-@Test func testCollaborationChannelCreation() async {
-    let channel = CollaborationChannel()
+@Test func testSessionChannelCreation() async {
+    let channel = SessionChannel()
     await channel.close()
 }

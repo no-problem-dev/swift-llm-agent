@@ -5,21 +5,9 @@ import LLMClient
 
 /// UIAgent → SessionAgent (MainActor) へのイベント
 ///
-/// UIAgent が Channel からのメッセージを処理し、
-/// UI 層が消費するイベントに変換して配信する。
+/// UIAgent がチャンネルメッセージを処理し、
+/// LLM ループの結果を UI 層に配信するためのイベント。
 public enum UIAgentEvent: Sendable {
-    /// ユーザー入力を受信（UI に表示するため）
-    case inputReceived(LLMInput)
-
-    /// Orchestrator にタスク実行を要求
-    case orchestrationRequested(LLMInput)
-
-    /// 初期 UI ブロック（ユーザー入力時に即座に emit）
-    case initialBlockEmitted(UIBlockReference)
-
-    /// エージェントステップのパススルー
-    case step(AgentStep)
-
     /// Generative UI 生成開始（fallback 用の rawText を含む）
     case generationStarted(rawText: String)
 
@@ -38,17 +26,11 @@ public enum UIAgentEvent: Sendable {
     /// 画像生成完了（mediaId を注入）
     case imageGenerated(blockId: String, mediaId: String)
 
-    /// インタラクション要求（UI にシート表示を要求）
+    /// インタラクション要求（UI にインタラクション表示を要求）
     case interactionRequested(InteractionIntent)
 
     /// ツール承認要求（UI に承認ダイアログを要求）
     case authorizationRequested(ToolApprovalRequest)
-
-    /// ターン正常完了
-    case turnCompleted(StructuredResult)
-
-    /// ターンエラー
-    case turnFailed(String)
 
     /// セッションキャンセル
     case sessionCancelled

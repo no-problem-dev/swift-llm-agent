@@ -2,13 +2,10 @@ import Foundation
 import LLMClient
 import AgentCommunication
 
-// MARK: - ChannelContext
+// MARK: - SessionChannelContext
 
 /// LLM ドメイン用のチャンネルコンテキスト
-///
-/// `CommunicationContext<[PromptComponent]>` の typealias。
-/// 汎用コンテキストに LLM 固有の PromptComponent ベースのロール定義を注入。
-public typealias ChannelContext = CommunicationContext<[PromptComponent]>
+public typealias SessionChannelContext = CommunicationContext<[PromptComponent]>
 
 // MARK: - LLM Extensions
 
@@ -34,15 +31,17 @@ extension CommunicationContext where Role == [PromptComponent] {
                     .instruction("""
                     あなたはタスク実行を担当するオーケストレーターです。
                     共同チャンネルに UIAgent とユーザーが参加しています。
-                    作業の進捗は自然にステップとして共有されます。
-                    タスク完了時は結果サマリーを返してください。
+                    ユーザーに直接質問する場合は post_to_channel ツールを使い、
+                    UIAgent に質問を依頼してください。
+                    タスク完了時は結果サマリーをチャンネルに投稿してください。
                     """)
                 ],
                 "uiAgent": [
                     .instruction("""
-                    あなたは UI 表示を担当するエージェントです。
-                    チャンネルのメッセージを監視し、ユーザー入力には即座に応答します。
-                    オーケストレーターの完了報告を受けたら、UI ブロックを生成してください。
+                    あなたは UI 表示とユーザー対話を担当するエージェントです。
+                    チャンネルのメッセージを監視し、オーケストレーターからの依頼に応じて
+                    UI ブロックを生成したり、ユーザーにインタラクションを要求してください。
+                    ユーザーの回答はチャンネルに投稿してオーケストレーターに伝えてください。
                     """)
                 ]
             ]
