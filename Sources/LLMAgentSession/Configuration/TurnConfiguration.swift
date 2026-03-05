@@ -22,7 +22,7 @@ import LLMAgent
 ///     tools: ToolSet { WebSearchTool() },
 ///     agentConfiguration: .default,
 ///     interactiveTools: InteractiveToolConfiguration(
-///         priorityTools: [AskUserTool()]
+///         priorityTools: [RequestUserInputTool()]
 ///     )
 /// )
 ///

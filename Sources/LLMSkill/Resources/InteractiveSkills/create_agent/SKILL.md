@@ -22,7 +22,7 @@ tags:
 ユーザーが自然言語で役割を伝えたら、適切なエージェント設定を自動生成します。
 
 ## 重要なルール
-- 質問は必ず `ask_user` または `ask_selection` または `ask_confirmation` を使う。テキスト出力として質問しない
+- 質問は必ず `request_user_input` ツールを使う。テキスト出力として質問しない
 - 常に日本語で応答する
 - エージェント名（name）は snake_case で生成する
 - instructions はエージェントの役割・振る舞い・制約を明確に記述する
@@ -40,7 +40,7 @@ tags:
 ## ワークフロー
 
 ### Step 1: 役割・目的の収集
-`ask_user` でエージェントの役割を聞く:
+`request_user_input` でエージェントの役割を聞く:
 - question: "どんなエージェントを作りたいですか？役割や目的を自由に教えてください。\n\n例:\n- 「Webリサーチを専門にするエージェント」\n- 「コードレビューをするエージェント」\n- 「データを集計・分析するエージェント」\n- 「文章の校正・推敲をするエージェント」"
 
 ### Step 2: 設定の自動生成
@@ -53,22 +53,22 @@ tags:
 - `icon_name`: 適切な SF Symbols アイコン名
 
 ### Step 3: モデルティア選択
-`ask_selection` でモデルティアを選択:
+`request_user_input`（type: "selection"）でモデルティアを選択:
 - question: "エージェントのモデルティアを選んでください。\n\n複雑なタスクには powerful、日常的なタスクには standard、軽量なタスクには light が適しています。"
 - 選択肢: 「light（軽量・高速）」「standard（標準）(推奨)」「powerful（高性能）」
 
 ### Step 4: 最大ステップ数の確認
-`ask_selection` で最大ステップ数を選択:
+`request_user_input`（type: "selection"）で最大ステップ数を選択:
 - question: "エージェントの最大ステップ数を選んでください。\n\n1ステップ = 1回のツール呼び出しまたは応答です。"
 - 選択肢: 「6（軽いタスク向け）」「10（標準）(推奨)」「15（複雑なタスク向け）」「20（高度なタスク向け）」
 
 ### Step 5: スコープ選択
-`ask_selection` でスコープを選択:
+`request_user_input`（type: "selection"）でスコープを選択:
 - question: "エージェントの保存先を選んでください。"
 - 選択肢: 「グローバル（全プロジェクトで使用可能）」「プロジェクト（現在のプロジェクトのみ）」
 
 ### Step 6: 確認
-`ask_confirmation` で全設定のプレビューを表示:
+`request_user_input`（type: "confirmation"）で全設定のプレビューを表示:
 - question に以下をすべて含める:
   - 表示名・識別名
   - 説明（description）

@@ -171,14 +171,13 @@ public enum AgentBehaviors {
     /// 自律的行動の指示
     ///
     /// エージェントが不必要にユーザーに質問しないことを保証します。
-    /// インタラクティブツール（ask_user / ask_selection / ask_confirmation）が
-    /// 利用可能な場合は、テキスト応答ではなくツール経由で問い合わせることを指示します。
+    /// インタラクションツールが利用可能な場合は、テキスト応答ではなくツール経由で問い合わせることを指示します。
     public static let autonomy = PromptComponent.behavior(
         "Act autonomously and make reasonable decisions on your own. " +
         "Do NOT generate plain-text questions or option lists in your response. " +
         "When you need user input, you MUST use the appropriate interaction tool " +
-        "(ask_user, ask_selection, or ask_confirmation) instead of writing questions " +
-        "or choices as text. When the task is clear and you can proceed without user input, " +
+        "(request_user_input) instead of writing questions or choices as text. " +
+        "When the task is clear and you can proceed without user input, " +
         "proceed with your best judgment."
     )
 
@@ -205,7 +204,7 @@ public enum AgentBehaviors {
 
     /// インタラクティブツール使用ガイダンス
     ///
-    /// `ask_user` / `ask_selection` / `ask_confirmation` が利用可能な場合に、
+    /// `request_user_input` が利用可能な場合に、
     /// LLM が適切にユーザーとインタラクトするための行動指示。
     /// `InteractiveToolConfiguration.defaultGuidance` を参照。
     public static let interactiveGuidance = InteractiveToolConfiguration.defaultGuidance
