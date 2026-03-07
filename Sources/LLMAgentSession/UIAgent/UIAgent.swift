@@ -6,27 +6,26 @@ import AgentCommunication
 
 /// チャンネルベースの UI エージェント
 ///
-/// `Channel<String>` を購読し、オーケストレーターからのメッセージに応じて
-/// UI ブロック生成やユーザーインタラクションを実行する。
+/// `Channel<String>` を購読し、チャンネル上のメッセージに応じて
+/// UI 関心事を処理する独立エージェント。
 ///
-/// ## 設計
+/// ## チャンネル駆動アーキテクチャ
 ///
-/// UIAgent は LLM を内蔵し、チャンネルメッセージをコンテキストとして
-/// UI 生成の判断を行う。emit_block / emit_interaction ツールを使い、
-/// アプリ層に UI イベントを配信する。
+/// ユーザー入力はチャンネルに投稿され、オーケストレーターと UIAgent が
+/// 同時にメッセージを受信して並行動作を開始する:
 ///
-/// ユーザーからのインタラクション応答は `respondToInteraction()` 経由で受け取り、
-/// チャンネルに投稿してオーケストレーターに伝える。
+/// 1. **user メッセージ受信** → `.inputReceived` イベント発火（UIAgent アクティブ化）
+/// 2. **orchestrator メッセージ受信** → `.generationStarted` イベント発火（UI 生成開始）
+///
+/// UIAgent はオーケストレーターに依存せず、チャンネルメッセージを
+/// トリガーとして自律的に動作する。
 ///
 /// ## 使い方
 ///
 /// ```swift
-/// let uiAgent = UIAgent(
-///     session: uiSession,
-///     eventHandler: { event in
-///         await MainActor.run { sessionAgent.handleUIAgentEvent(event) }
-///     }
-/// )
+/// let uiAgent = UIAgent(eventHandler: { event in
+///     await MainActor.run { sessionAgent.handleUIAgentEvent(event) }
+/// })
 /// Task { await uiAgent.start(on: channel) }
 /// ```
 public actor UIAgent: ChannelAgent {
@@ -112,14 +111,21 @@ public actor UIAgent: ChannelAgent {
     // MARK: - Private
 
     private func handleChannelMessage(_ message: AgentMessage<String>) async {
-        // orchestrator からのメッセージに反応して UI 生成を起動
-        guard message.sender == "orchestrator" else { return }
+        switch message.sender {
+        case "user":
+            // ユーザー入力をチャンネル経由で受信 → アクティブ状態に
+            status = .processing
+            await eventHandler(.inputReceived(query: message.content))
+            status = .listening
 
-        status = .processing
+        case "orchestrator":
+            // オーケストレーターの出力を受信 → UI 生成を起動
+            status = .processing
+            await eventHandler(.generationStarted(rawText: message.content))
+            status = .listening
 
-        // オーケストレーターのメッセージを UI 生成イベントとして通知
-        await eventHandler(.generationStarted(rawText: message.content))
-
-        status = .listening
+        default:
+            break
+        }
     }
 }

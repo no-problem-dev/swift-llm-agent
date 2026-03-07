@@ -8,6 +8,9 @@ import LLMClient
 /// UIAgent がチャンネルメッセージを処理し、
 /// LLM ループの結果を UI 層に配信するためのイベント。
 public enum UIAgentEvent: Sendable {
+    /// チャンネル経由でユーザー入力を受信（UIAgent がアクティブになった通知）
+    case inputReceived(query: String)
+
     /// Generative UI 生成開始（fallback 用の rawText を含む）
     case generationStarted(rawText: String)
 
