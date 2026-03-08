@@ -114,8 +114,8 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
             }
 
             let results: [ToolResponse]
-            if calls.count <= 1 {
-                // 1件以下は逐次（TaskGroup オーバーヘッド回避）
+            if calls.count <= 1 || !config.parallelToolExecution {
+                // 逐次実行（1件以下 or 順序保証が必要な場合）
                 var sequential: [ToolResponse] = []
                 for call in calls {
                     try Task.checkCancellation()
@@ -125,7 +125,7 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
                 }
                 results = sequential
             } else {
-                // 2件以上は並列実行
+                // 2件以上かつ並列実行許可時
                 let toolSet = await context.getTools()
                 results = await withTaskGroup(of: (Int, ToolResponse).self) { group in
                     for (index, call) in calls.enumerated() {

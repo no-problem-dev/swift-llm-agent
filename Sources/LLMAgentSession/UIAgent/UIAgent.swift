@@ -55,12 +55,25 @@ public actor UIAgent: ChannelAgent {
 
     // MARK: - ChannelAgent
 
+    /// チャンネルを購読してメッセージ待受を開始する（冪等）
+    ///
+    /// 内部で `channel.subscribe(as:)` を呼ぶため、
+    /// subscribe 完了前に post されたメッセージは受信できない。
+    /// タイミング制御が必要な場合は `listen(on:messages:)` を使用する。
     public func start(on channel: Channel<String>) async {
-        self.channel = channel
+        guard status == .idle || status == .stopped else { return }
         let messageStream = await channel.subscribe(as: agentId)
+        await listen(on: channel, messages: messageStream)
+    }
+
+    /// 事前に subscribe 済みのストリームでメッセージ待受を開始（冪等）
+    public func listen(on channel: Channel<String>, messages: AsyncStream<AgentMessage<String>>) async {
+        guard status == .idle || status == .stopped else { return }
+
+        self.channel = channel
         status = .listening
 
-        for await message in messageStream {
+        for await message in messages {
             guard !Task.isCancelled else { break }
             await handleChannelMessage(message)
         }

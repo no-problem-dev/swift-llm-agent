@@ -35,6 +35,9 @@ public enum SessionPhaseEvent: Sendable {
     /// 完了
     case completed(result: StructuredResult)
 
+    /// ターン終了（skipFinalOutput 時: .completed を経由せずループが終了した場合）
+    case turnEnded
+
     /// 失敗
     case failed(error: String)
 }

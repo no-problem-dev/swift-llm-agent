@@ -81,6 +81,16 @@ public struct AgentConfiguration: Sendable {
     /// - 正の値: 指定回数まで許可
     public let maxInteractiveCalls: Int?
 
+    /// 複数ツールコールの並列実行を許可するか
+    ///
+    /// `true` の場合、LLM が1回のレスポンスで複数のツールコールを返した際に
+    /// `TaskGroup` で並列実行します（デフォルト）。
+    ///
+    /// `false` の場合、ツールコールを LLM の出力順に逐次実行します。
+    /// `emit_block` のように実行順序が表示順序に直結するツールでは
+    /// `false` に設定してください。
+    public let parallelToolExecution: Bool
+
     /// Extended Thinking のモード
     ///
     /// `.adaptive` に設定すると、Claude の Extended Thinking を有効にし、
@@ -110,6 +120,7 @@ public struct AgentConfiguration: Sendable {
         maxDuplicateToolCalls: Int = 1,
         maxToolCallsPerTool: Int? = 5,
         maxInteractiveCalls: Int? = nil,
+        parallelToolExecution: Bool = true,
         thinkingMode: ThinkingMode = .disabled,
         skipFinalOutput: Bool = false
     ) {
@@ -119,6 +130,7 @@ public struct AgentConfiguration: Sendable {
         self.maxDuplicateToolCalls = maxDuplicateToolCalls
         self.maxToolCallsPerTool = maxToolCallsPerTool
         self.maxInteractiveCalls = maxInteractiveCalls
+        self.parallelToolExecution = parallelToolExecution
         self.thinkingMode = thinkingMode
         self.skipFinalOutput = skipFinalOutput
     }
@@ -136,6 +148,7 @@ public struct AgentConfiguration: Sendable {
             maxDuplicateToolCalls: maxDuplicateToolCalls,
             maxToolCallsPerTool: maxToolCallsPerTool,
             maxInteractiveCalls: 0,
+            parallelToolExecution: parallelToolExecution,
             thinkingMode: thinkingMode,
             skipFinalOutput: skipFinalOutput
         )
