@@ -23,12 +23,6 @@ public enum UIAgentEvent: Sendable {
     /// Generative UI 生成失敗
     case generationFailed(String)
 
-    /// 画像プレースホルダー挿入
-    case imagePlaceholderInserted(UIBlockReference, afterBlockId: String)
-
-    /// 画像生成完了（mediaId を注入）
-    case imageGenerated(blockId: String, mediaId: String)
-
     /// インタラクション要求（UI にインタラクション表示を要求）
     case interactionRequested(InteractionIntent)
 
