@@ -12,6 +12,7 @@ struct SearchEventsInput: Codable {
     var endDate: String
     var keyword: String?
     var calendarIds: [String]?
+    var scope: String?
     var limit: Int?
 
     enum CodingKeys: String, CodingKey {
@@ -19,6 +20,7 @@ struct SearchEventsInput: Codable {
         case endDate = "end_date"
         case keyword
         case calendarIds = "calendar_ids"
+        case scope
         case limit
     }
 }
@@ -104,10 +106,19 @@ struct CalendarInfo: Codable, Sendable {
     var title: String
     var type: String
     var source: String
+    var sourceType: String
+    var category: String
+    var color: String
+    var isWritable: Bool
+    var isSubscribed: Bool
     var isImmutable: Bool
 
     enum CodingKeys: String, CodingKey {
         case id, title, type, source
+        case sourceType = "source_type"
+        case category, color
+        case isWritable = "is_writable"
+        case isSubscribed = "is_subscribed"
         case isImmutable = "is_immutable"
     }
 
@@ -116,8 +127,53 @@ struct CalendarInfo: Codable, Sendable {
         self.title = calendar.title
         self.type = type
         self.source = calendar.source.title
+        self.sourceType = Self.resolveSourceType(calendar.source.sourceType)
+        self.category = Self.categorize(calendar)
+        self.color = Self.hexColor(from: calendar.cgColor)
+        self.isWritable = calendar.allowsContentModifications
+        self.isSubscribed = calendar.isSubscribed
         self.isImmutable = calendar.isImmutable
     }
+
+    private static func resolveSourceType(_ sourceType: EKSourceType) -> String {
+        switch sourceType {
+        case .local: return "local"
+        case .exchange: return "exchange"
+        case .calDAV: return "calDAV"
+        case .mobileMe: return "mobileMe"
+        case .subscribed: return "subscribed"
+        case .birthdays: return "birthdays"
+        @unknown default: return "unknown"
+        }
+    }
+
+    private static func categorize(_ calendar: EKCalendar) -> String {
+        if calendar.isSubscribed {
+            return "subscribed"
+        }
+        if calendar.source.sourceType == .birthdays {
+            return "birthday"
+        }
+        if calendar.allowsContentModifications {
+            return "personal"
+        }
+        return "shared"
+    }
+
+    private static func hexColor(from cgColor: CGColor) -> String {
+        guard let components = cgColor.components, components.count >= 3 else {
+            return "#000000"
+        }
+        let r = Int(components[0] * 255)
+        let g = Int(components[1] * 255)
+        let b = Int(components[2] * 255)
+        return String(format: "#%02X%02X%02X", r, g, b)
+    }
+}
+
+struct ListCalendarsResult: Codable, Sendable {
+    var calendars: [CalendarInfo]
+    var hint: String
 }
 
 struct EventInfo: Codable, Sendable {
@@ -131,6 +187,7 @@ struct EventInfo: Codable, Sendable {
     var url: String?
     var calendarTitle: String
     var calendarId: String
+    var calendarCategory: String
 
     enum CodingKeys: String, CodingKey {
         case id, title
@@ -140,6 +197,7 @@ struct EventInfo: Codable, Sendable {
         case location, notes, url
         case calendarTitle = "calendar_title"
         case calendarId = "calendar_id"
+        case calendarCategory = "calendar_category"
     }
 
     init(from event: EKEvent) {
@@ -153,6 +211,7 @@ struct EventInfo: Codable, Sendable {
         self.url = event.url?.absoluteString
         self.calendarTitle = event.calendar.title
         self.calendarId = event.calendar.calendarIdentifier
+        self.calendarCategory = CalendarInfo.init(from: event.calendar, type: "event").category
     }
 }
 

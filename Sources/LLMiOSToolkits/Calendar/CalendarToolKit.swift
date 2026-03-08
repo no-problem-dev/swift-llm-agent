@@ -21,8 +21,8 @@ import LLMMCP
 ///
 /// ## 提供されるツール
 ///
-/// - `list_calendars`: カレンダー/リマインダーリスト一覧を取得
-/// - `search_events`: 日付範囲やキーワードでイベントを検索
+/// - `list_calendars`: カレンダー/リマインダーリスト一覧を取得（種類・スコープ情報付き）
+/// - `search_events`: 日付範囲やキーワードでイベントを検索（スコープ指定可能）
 /// - `create_event`: 新しいカレンダーイベントを作成
 /// - `search_reminders`: リマインダーを検索
 /// - `create_reminder`: 新しいリマインダーを作成
@@ -36,13 +36,25 @@ public final class CalendarToolKit: ToolKit, @unchecked Sendable {
     private let eventGuard: PermissionGuard
     private let reminderGuard: PermissionGuard
 
+    /// ユーザーが設定画面で選択したデフォルト対象カレンダーの ID セット。
+    /// nil の場合はスコープベースのフィルタリングを使用する。
+    private let selectedCalendarIDs: Set<String>?
+
     // MARK: - Initialization
 
     /// CalendarToolKit を作成
     ///
-    /// - Parameter eventStore: 使用する EKEventStore（デフォルトは新規インスタンス）
-    public init(eventStore: EKEventStore = EKEventStore()) {
+    /// - Parameters:
+    ///   - eventStore: 使用する EKEventStore（デフォルトは新規インスタンス）
+    ///   - selectedCalendarIDs: ユーザーが設定で選択したカレンダー ID。
+    ///     nil の場合は scope パラメータに基づくフィルタリングを使用。
+    ///     空セットの場合は全カレンダーが対象。
+    public init(
+        eventStore: EKEventStore = EKEventStore(),
+        selectedCalendarIDs: Set<String>? = nil
+    ) {
         self.eventStore = eventStore
+        self.selectedCalendarIDs = selectedCalendarIDs
         self.eventGuard = PermissionGuard(
             provider: CalendarEventPermission(eventStore: eventStore)
         )
@@ -68,8 +80,10 @@ public final class CalendarToolKit: ToolKit, @unchecked Sendable {
     private var listCalendarsTool: BuiltInTool {
         BuiltInTool(
             name: "list_calendars",
-            description: "List all available calendars and reminder lists. "
-                + "Use this to discover calendar IDs before searching or creating events.",
+            description: "List all available calendars and reminder lists with detailed metadata. "
+                + "Each calendar includes: id, title, source, sourceType, category (personal/shared/subscribed/birthday), "
+                + "color, isWritable, isSubscribed. "
+                + "Use this to discover calendar IDs and understand which calendars are personal vs shared before searching or creating events.",
             inputSchema: .object(
                 properties: [
                     "type": .string(
@@ -83,7 +97,7 @@ public final class CalendarToolKit: ToolKit, @unchecked Sendable {
                 readOnlyHint: true,
                 openWorldHint: false
             )
-        ) { [eventStore, eventGuard, reminderGuard] data in
+        ) { [eventStore, eventGuard, reminderGuard, selectedCalendarIDs] data in
             let input = try JSONDecoder().decode(ListCalendarsInput.self, from: data)
             let type = input.type?.lowercased() ?? "all"
 
@@ -102,7 +116,11 @@ public final class CalendarToolKit: ToolKit, @unchecked Sendable {
                 }
             }
 
-            return try .encoded(calendars)
+            let hint = Self.buildCalendarHint(
+                calendars: calendars, selectedIDs: selectedCalendarIDs
+            )
+            let result = ListCalendarsResult(calendars: calendars, hint: hint)
+            return try .encoded(result)
         }
     }
 
@@ -112,7 +130,7 @@ public final class CalendarToolKit: ToolKit, @unchecked Sendable {
         BuiltInTool(
             name: "search_events",
             description: "Search calendar events by date range and optional keyword. "
-                + "Returns matching events with title, dates, location, and notes. "
+                + "Returns matching events with title, dates, location, notes, and calendar category. "
                 + "Date range is required; use list_calendars first to get calendar IDs if needed. "
                 + "IMPORTANT: Use the user's local time, not UTC. Dates without timezone offset are treated as local time.",
             inputSchema: .object(
@@ -127,8 +145,14 @@ public final class CalendarToolKit: ToolKit, @unchecked Sendable {
                         description: "Optional keyword to filter events by title, notes, or location"
                     ),
                     "calendar_ids": .array(
-                        description: "Optional array of calendar IDs to search in (searches all if omitted)",
+                        description: "Optional array of specific calendar IDs to search in. Takes precedence over scope.",
                         items: .string()
+                    ),
+                    "scope": .string(
+                        description: "Calendar scope filter (used when calendar_ids is not specified): "
+                            + "'personal' (default) - only user's own writable calendars, "
+                            + "'all' - all calendars including shared/subscribed/birthday, "
+                            + "'writable' - all calendars that allow content modifications"
                     ),
                     "limit": .integer(
                         description: "Maximum number of events to return (default: 50, max: 200)"
@@ -141,7 +165,7 @@ public final class CalendarToolKit: ToolKit, @unchecked Sendable {
                 readOnlyHint: true,
                 openWorldHint: false
             )
-        ) { [eventStore, eventGuard] data in
+        ) { [eventStore, eventGuard, selectedCalendarIDs] data in
             if let error = await eventGuard.ensureAuthorized() { return error }
 
             let input = try JSONDecoder().decode(SearchEventsInput.self, from: data)
@@ -155,12 +179,28 @@ public final class CalendarToolKit: ToolKit, @unchecked Sendable {
 
             let calendars: [EKCalendar]?
             if let ids = input.calendarIds, !ids.isEmpty {
+                // calendar_ids が明示的に指定された場合はそれを使う
                 calendars = ids.compactMap { eventStore.calendar(withIdentifier: $0) }
                 if calendars?.isEmpty == true {
                     return .error("No valid calendars found for the given IDs. Use list_calendars to get valid IDs.")
                 }
+            } else if let selectedIDs = selectedCalendarIDs, !selectedIDs.isEmpty {
+                // ユーザーが設定画面で選択したカレンダーをデフォルトで使用
+                let scope = input.scope?.lowercased() ?? "default"
+                if scope == "all" {
+                    // scope: all の場合は設定を無視して全カレンダー
+                    calendars = nil
+                } else {
+                    // default / personal / writable → ユーザー設定のカレンダーを使用
+                    let resolved = selectedIDs.compactMap { eventStore.calendar(withIdentifier: $0) }
+                    calendars = resolved.isEmpty ? nil : resolved
+                }
             } else {
-                calendars = nil
+                // 設定なし → scope に基づくフィルタリング
+                let scope = input.scope?.lowercased() ?? "personal"
+                calendars = Self.filterCalendarsByScope(
+                    eventStore.calendars(for: .event), scope: scope
+                )
             }
 
             let predicate = eventStore.predicateForEvents(
@@ -189,14 +229,15 @@ public final class CalendarToolKit: ToolKit, @unchecked Sendable {
         BuiltInTool(
             name: "create_event",
             description: "Create a new calendar event. Returns the created event details including its ID. "
-                + "IMPORTANT: Use the user's local time, not UTC. Dates without timezone offset are treated as local time.",
+                + "IMPORTANT: Use the user's local time, not UTC. Dates without timezone offset are treated as local time. "
+                + "Only writable calendars (isWritable: true) can be used. Use list_calendars to check.",
             inputSchema: .object(
                 properties: [
                     "title": .string(description: "Event title"),
                     "start_date": .string(description: "Start date in ISO8601 format with timezone offset (e.g., '2025-03-15T10:00:00+09:00') or without timezone for local time (e.g., '2025-03-15T10:00:00')"),
                     "end_date": .string(description: "End date in ISO8601 format with timezone offset or without timezone for local time"),
                     "calendar_id": .string(
-                        description: "Calendar ID to create the event in (uses default calendar if omitted)"
+                        description: "Calendar ID to create the event in (uses default calendar if omitted). Must be a writable calendar."
                     ),
                     "notes": .string(description: "Event notes/description"),
                     "location": .string(description: "Event location"),
@@ -238,6 +279,12 @@ public final class CalendarToolKit: ToolKit, @unchecked Sendable {
 
             if let calendarId = input.calendarId,
                let calendar = eventStore.calendar(withIdentifier: calendarId) {
+                guard calendar.allowsContentModifications else {
+                    return .error(
+                        "Calendar '\(calendar.title)' is read-only and does not allow creating events. "
+                        + "Use list_calendars to find a writable calendar (isWritable: true)."
+                    )
+                }
                 event.calendar = calendar
             } else {
                 event.calendar = eventStore.defaultCalendarForNewEvents
@@ -388,5 +435,87 @@ public final class CalendarToolKit: ToolKit, @unchecked Sendable {
                 return .error("Failed to create reminder: \(error.localizedDescription)")
             }
         }
+    }
+
+    // MARK: - Helpers
+
+    /// scope 文字列に基づいてカレンダーをフィルタリング
+    private static func filterCalendarsByScope(
+        _ calendars: [EKCalendar], scope: String
+    ) -> [EKCalendar]? {
+        switch scope {
+        case "all":
+            return nil  // nil = 全カレンダー対象
+        case "writable":
+            let filtered = calendars.filter { $0.allowsContentModifications }
+            return filtered.isEmpty ? nil : filtered
+        case "personal":
+            let filtered = calendars.filter { calendar in
+                !calendar.isSubscribed
+                    && calendar.source.sourceType != .birthdays
+                    && calendar.allowsContentModifications
+            }
+            return filtered.isEmpty ? nil : filtered
+        default:
+            // 不明な scope は personal として扱う
+            let filtered = calendars.filter { calendar in
+                !calendar.isSubscribed
+                    && calendar.source.sourceType != .birthdays
+                    && calendar.allowsContentModifications
+            }
+            return filtered.isEmpty ? nil : filtered
+        }
+    }
+
+    /// list_calendars の結果に付与する LLM 向けヒントを生成
+    private static func buildCalendarHint(
+        calendars: [CalendarInfo], selectedIDs: Set<String>? = nil
+    ) -> String {
+        let categories = Dictionary(grouping: calendars, by: { $0.category })
+        var lines: [String] = [
+            "The following calendars are available, categorized by type:"
+        ]
+
+        if let personal = categories["personal"], !personal.isEmpty {
+            let names = personal.map { "'\($0.title)'" }.joined(separator: ", ")
+            lines.append("- personal (\(personal.count)): \(names) — User's own calendars. Use these by default for reading and creating events.")
+        }
+        if let shared = categories["shared"], !shared.isEmpty {
+            let names = shared.map { "'\($0.title)'" }.joined(separator: ", ")
+            lines.append("- shared (\(shared.count)): \(names) — Shared calendars from others (read-only).")
+        }
+        if let subscribed = categories["subscribed"], !subscribed.isEmpty {
+            let names = subscribed.map { "'\($0.title)'" }.joined(separator: ", ")
+            lines.append("- subscribed (\(subscribed.count)): \(names) — Subscribed calendars like holidays (read-only).")
+        }
+        if let birthday = categories["birthday"], !birthday.isEmpty {
+            lines.append("- birthday (\(birthday.count)): Auto-generated from contacts (read-only).")
+        }
+
+        // ユーザーが設定画面で選択したカレンダーの情報
+        if let selectedIDs, !selectedIDs.isEmpty {
+            let selectedNames = calendars
+                .filter { selectedIDs.contains($0.id) }
+                .map { "'\($0.title)'" }
+                .joined(separator: ", ")
+            lines.append("")
+            lines.append("USER'S PREFERRED CALENDARS (configured in app settings):")
+            lines.append("  \(selectedNames)")
+            lines.append("  These calendars are used by default when searching events (unless scope: 'all' is specified).")
+        }
+
+        lines.append("")
+        lines.append("GUIDELINES:")
+        if let selectedIDs, !selectedIDs.isEmpty {
+            lines.append("- By default, search_events uses the user's preferred calendars configured in settings.")
+            lines.append("- Use scope: 'all' to search all calendars including shared/subscribed/birthday.")
+        } else {
+            lines.append("- When user does not specify, search only 'personal' calendars (use scope: 'personal').")
+        }
+        lines.append("- When creating events, only use calendars with isWritable: true.")
+        lines.append("- If user asks about 'all my events' or 'everything', use scope: 'all'.")
+        lines.append("- If user mentions a specific calendar name, use its calendar_id.")
+
+        return lines.joined(separator: "\n")
     }
 }

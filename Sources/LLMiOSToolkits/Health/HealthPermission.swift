@@ -66,32 +66,62 @@ enum HealthDataTypes {
     /// 読み取り用のデータ型
     static var defaultReadTypes: Set<HKObjectType> {
         var types: Set<HKObjectType> = []
-        // 歩数
-        if let stepCount = HKObjectType.quantityType(forIdentifier: .stepCount) {
-            types.insert(stepCount)
+
+        // Activity (cumulative)
+        let quantityIdentifiers: [HKQuantityTypeIdentifier] = [
+            .stepCount,
+            .distanceWalkingRunning,
+            .distanceCycling,
+            .distanceSwimming,
+            .activeEnergyBurned,
+            .basalEnergyBurned,
+            .flightsClimbed,
+            .appleExerciseTime,
+            .appleStandTime,
+            // Heart
+            .heartRate,
+            .restingHeartRate,
+            .heartRateVariabilitySDNN,
+            .walkingHeartRateAverage,
+            .vo2Max,
+            // Body
+            .bodyMass,
+            .bodyMassIndex,
+            .bodyFatPercentage,
+            .height,
+            // Vitals
+            .oxygenSaturation,
+            .bodyTemperature,
+            .respiratoryRate,
+            .bloodPressureSystolic,
+            .bloodPressureDiastolic,
+            .bloodGlucose,
+            // Audio
+            .environmentalAudioExposure,
+            .headphoneAudioExposure,
+        ]
+
+        for identifier in quantityIdentifiers {
+            if let type = HKObjectType.quantityType(forIdentifier: identifier) {
+                types.insert(type)
+            }
         }
-        // 心拍数
-        if let heartRate = HKObjectType.quantityType(forIdentifier: .heartRate) {
-            types.insert(heartRate)
+
+        // Category types
+        let categoryIdentifiers: [HKCategoryTypeIdentifier] = [
+            .sleepAnalysis,
+            .mindfulSession,
+        ]
+
+        for identifier in categoryIdentifiers {
+            if let type = HKObjectType.categoryType(forIdentifier: identifier) {
+                types.insert(type)
+            }
         }
-        // 歩行距離
-        if let distance = HKObjectType.quantityType(forIdentifier: .distanceWalkingRunning) {
-            types.insert(distance)
-        }
-        // アクティブエネルギー
-        if let energy = HKObjectType.quantityType(forIdentifier: .activeEnergyBurned) {
-            types.insert(energy)
-        }
-        // 体重
-        if let bodyMass = HKObjectType.quantityType(forIdentifier: .bodyMass) {
-            types.insert(bodyMass)
-        }
-        // 睡眠分析
-        if let sleep = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) {
-            types.insert(sleep)
-        }
-        // ワークアウト
+
+        // Workout
         types.insert(HKObjectType.workoutType())
+
         return types
     }
 

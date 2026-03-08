@@ -44,6 +44,15 @@ struct CalendarToolKitTests {
         #expect(required.contains("end_date"))
     }
 
+    @Test("search_events の schema に scope パラメータがある")
+    func searchEventsHasScope() {
+        let toolkit = CalendarToolKit()
+        let tool = toolkit.tools.first { $0.toolName == "search_events" }
+        #expect(tool != nil)
+        let properties = tool!.inputSchema.properties ?? [:]
+        #expect(properties["scope"] != nil)
+    }
+
     @Test("create_event は title, start_date, end_date を必須にする")
     func createEventRequiredFields() {
         let toolkit = CalendarToolKit()
