@@ -3,6 +3,7 @@ import LLMClient
 import LLMTool
 import LLMAgent
 import LLMAgentSession
+import AgentCommunication
 
 /// プロジェクトセッションコンテキスト — 便利な束ね型
 ///
@@ -30,7 +31,7 @@ public struct ProjectSessionContext: Sendable {
     public let assembler: ProjectContextAssembler
     public let workspacePath: String?
 
-    public init(project: Project, knowledgeStore: any ProjectKnowledgeStore, workspacePath: String? = nil) {
+    public init(project: Project, knowledgeStore: any KnowledgeStore, workspacePath: String? = nil) {
         self.project = project
         self.assembler = ProjectContextAssembler(knowledgeStore: knowledgeStore)
         self.workspacePath = workspacePath
@@ -38,7 +39,7 @@ public struct ProjectSessionContext: Sendable {
 
     public init(
         project: Project,
-        knowledgeStore: any ProjectKnowledgeStore,
+        knowledgeStore: any KnowledgeStore,
         coreKnowledgeCharacterLimit: Int,
         workspacePath: String? = nil
     ) {
@@ -52,7 +53,8 @@ public struct ProjectSessionContext: Sendable {
 
     /// TurnConfiguration にプロジェクトコンテキストを完全適用
     ///
-    /// ナレッジツールの追加も自動で行われる。
+    /// MCP/A2A プレースホルダー解決は行わない。
+    /// アプリ層で apply 後に別途解決すること。
     public func apply(to config: TurnConfiguration) async throws -> TurnConfiguration {
         try await assembler.apply(project, to: config, workspacePath: workspacePath)
     }

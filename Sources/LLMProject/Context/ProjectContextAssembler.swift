@@ -1,26 +1,28 @@
 import Foundation
 import LLMClient
 import LLMTool
+import LLMMCP
 import LLMAgent
 import LLMAgentSession
-import LLMMCP
-import LLMA2A
+import AgentCommunication
 
 /// プロジェクトコンテキストを TurnConfiguration に合成するアセンブラ
 ///
 /// 以下を自動で行う:
 /// 1. project instructions を SystemPrompt 先頭に注入
 /// 2. core knowledge を SystemPrompt に注入（`coreAlways` ポリシー時）
-/// 3. `ProjectKnowledgeToolKit` をツールセットに自動追加
+/// 3. `KnowledgeToolKit` をツールセットに自動追加
 /// 4. LLM にナレッジ管理を指示する behavior プロンプトを注入
+///
+/// MCP/A2A プレースホルダー解決はアプリ層の責務。
 public struct ProjectContextAssembler: Sendable {
-    let knowledgeStore: any ProjectKnowledgeStore
+    public let knowledgeStore: any KnowledgeStore
 
     /// Core ナレッジのシステムプロンプト注入文字数上限
     public var coreKnowledgeCharacterLimit: Int
 
     public init(
-        knowledgeStore: any ProjectKnowledgeStore,
+        knowledgeStore: any KnowledgeStore,
         coreKnowledgeCharacterLimit: Int = 4000
     ) {
         self.knowledgeStore = knowledgeStore
@@ -28,6 +30,9 @@ public struct ProjectContextAssembler: Sendable {
     }
 
     /// TurnConfiguration にプロジェクトコンテキストを完全適用
+    ///
+    /// MCP/A2A プレースホルダー解決は行わない。
+    /// アプリ層で apply 後に別途解決すること。
     public func apply(
         _ project: Project,
         to config: TurnConfiguration,
@@ -43,16 +48,8 @@ public struct ProjectContextAssembler: Sendable {
         )
 
         // 2. ToolSet にナレッジツールを追加
-        let toolKit = ProjectKnowledgeToolKit(store: knowledgeStore, projectId: project.id)
+        let toolKit = KnowledgeToolKit(store: knowledgeStore)
         result.tools = config.tools + toolKit
-
-        // 3. プレースホルダー解決（MCP + A2A）
-        if result.tools.containsMCPPlaceholders {
-            result.tools = try await result.tools.resolvingMCPServers()
-        }
-        if result.tools.containsA2APlaceholders {
-            result.tools = try await result.tools.resolvingA2AAgents()
-        }
 
         return result
     }
@@ -87,7 +84,7 @@ public struct ProjectContextAssembler: Sendable {
 
         // 3. Core Knowledge（coreAlways ポリシーの場合）
         if project.configuration.knowledgePolicy == .coreAlways {
-            let coreKnowledge = try await renderCoreKnowledge(projectId: project.id)
+            let coreKnowledge = try await renderCoreKnowledge()
             if !coreKnowledge.isEmpty {
                 components.append(.context("project_knowledge:\n\(coreKnowledge)"))
             }
@@ -96,7 +93,7 @@ public struct ProjectContextAssembler: Sendable {
         // 4. Behavior: ナレッジ管理指示
         components.append(.behavior(knowledgeManagementBehavior))
 
-        // 4. 既存の SystemPrompt と結合
+        // 5. 既存の SystemPrompt と結合
         let projectPrompt = SystemPrompt(components: components)
         if let existing = existingPrompt {
             return projectPrompt + existing
@@ -105,8 +102,8 @@ public struct ProjectContextAssembler: Sendable {
         }
     }
 
-    private func renderCoreKnowledge(projectId: UUID) async throws -> String {
-        let coreTopics = try await knowledgeStore.getCoreTopics(projectId: projectId)
+    private func renderCoreKnowledge() async throws -> String {
+        let coreTopics = try await knowledgeStore.getCoreTopics()
         guard !coreTopics.isEmpty else { return "" }
 
         var lines: [String] = []
@@ -126,7 +123,7 @@ public struct ProjectContextAssembler: Sendable {
                 let entryLine = "- \(entry.content)"
                 charCount += entryLine.count
                 if charCount > coreKnowledgeCharacterLimit {
-                    lines.append("- (truncated — use project_knowledge_read for full content)")
+                    lines.append("- (truncated — use knowledge_read for full content)")
                     break
                 }
                 lines.append(entryLine)
@@ -141,17 +138,16 @@ public struct ProjectContextAssembler: Sendable {
     /// LLM にナレッジ管理を自律的に行わせる behavior プロンプト
     private var knowledgeManagementBehavior: String {
         """
-        You have access to project knowledge tools (project_knowledge_*). \
+        You have access to knowledge tools (knowledge_*). \
         When you learn something important that should persist across sessions \
         — such as architectural decisions, user preferences, recurring patterns, \
-        or technical context — save it using project_knowledge_save. \
+        or technical context — save it using knowledge_save. \
         Organize knowledge into meaningful topics. Mark topics as 'core' if they \
         should be automatically loaded into every future session. \
         Do not ask the user before saving knowledge — use your judgment. \
         When the user explicitly asks to save content to a file, create a document, \
         or export as Markdown/text, always use write_file to create a real file \
-        on the filesystem — do not use project_knowledge_save for that purpose.
+        on the filesystem — do not use knowledge_save for that purpose.
         """
     }
 }
-

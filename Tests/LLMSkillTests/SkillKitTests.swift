@@ -12,26 +12,27 @@ import LLMAgent
 
 @Test func testInteractiveSkillCatalogLoadsBundledSkills() throws {
     let skills = try InteractiveSkillCatalog.loadBundledSkills()
-    #expect(skills.count == 18)
+    #expect(skills.count == 21)
     #expect(skills.first?.name == "scan")
-    #expect(skills.last?.name == "session_recall")
+    #expect(skills.last?.name == "create_agent")
 }
 
 @Test func testInteractiveSkillKitContainsEighteenSkills() {
     let kit = InteractiveSkillKit()
-    #expect(kit.skillCount == 18)
+    #expect(kit.skillCount == 21)
 }
 
 @Test func testInteractiveSkillKitSkillNames() {
     let kit = InteractiveSkillKit()
-    #expect(kit.skillNames == [
-        "scan", "quick_note", "digest",
-        "capture_to_tasks", "untangle", "decide", "next_action",
-        "research", "learn", "compare", "explain",
-        "morning", "journal", "focus",
-        "draft", "meeting_prep",
-        "context_restart", "session_recall",
-    ])
+    #expect(Set(kit.skillNames) == Set([
+        "capture_to_tasks", "compare", "context_restart",
+        "create_agent", "create_project", "create_skill",
+        "decide", "digest", "draft",
+        "explain", "focus", "journal",
+        "learn", "meeting_prep", "morning",
+        "next_action", "quick_note", "research",
+        "scan", "session_recall", "untangle",
+    ]))
 }
 
 @Test func testMorningSkillProperties() {
@@ -78,7 +79,7 @@ import LLMAgent
         InteractiveSkillKit()
     }
 
-    #expect(registry.skills.count == 18)
+    #expect(registry.skills.count == 21)
     #expect(registry.skill(named: "morning") != nil)
     #expect(registry.skill(named: "learn") != nil)
     #expect(registry.skill(named: "context_restart") != nil)
@@ -94,7 +95,7 @@ import LLMAgent
         )
     }
 
-    #expect(registry.skills.count == 19)
+    #expect(registry.skills.count == 22)
     #expect(registry.skill(named: "morning") != nil)
     #expect(registry.skill(named: "custom") != nil)
 }
@@ -127,6 +128,6 @@ private struct TestSkillKit: SkillKit {
         TestSkillKit()
     }
 
-    #expect(registry.skills.count == 19)
+    #expect(registry.skills.count == 22)
     #expect(registry.skill(named: "skill-a") != nil)
 }

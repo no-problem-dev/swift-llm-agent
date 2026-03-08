@@ -1,15 +1,27 @@
 import Foundation
 import LLMClient
-import AgentCommunication
 
 // MARK: - SessionChannelContext
 
 /// LLM ドメイン用のチャンネルコンテキスト
-public typealias SessionChannelContext = CommunicationContext<[PromptComponent]>
+///
+/// チャンネル参加者の目的と、各メンバーのロール定義（PromptComponent ベース）を保持する。
+public struct SessionChannelContext: Sendable {
+    /// グループの目的
+    public let purpose: String
 
-// MARK: - LLM Extensions
+    /// メンバーごとのロール定義
+    public let memberRoles: [String: [PromptComponent]]
 
-extension CommunicationContext where Role == [PromptComponent] {
+    public init(purpose: String, memberRoles: [String: [PromptComponent]] = [:]) {
+        self.purpose = purpose
+        self.memberRoles = memberRoles
+    }
+
+    /// 特定メンバーのロールを取得
+    public func role(for memberId: String) -> [PromptComponent]? {
+        memberRoles[memberId]
+    }
 
     /// 特定メンバー用のプロンプトコンポーネントを返す
     public func promptComponents(for memberId: String) -> [PromptComponent] {
@@ -23,8 +35,8 @@ extension CommunicationContext where Role == [PromptComponent] {
     }
 
     /// デフォルトのチャンネルコンテキスト
-    public static var `default`: CommunicationContext<[PromptComponent]> {
-        CommunicationContext(
+    public static var `default`: SessionChannelContext {
+        SessionChannelContext(
             purpose: "Task collaboration between user, orchestrator, and UI agent",
             memberRoles: [
                 "orchestrator": [

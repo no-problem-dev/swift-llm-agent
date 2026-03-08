@@ -2,30 +2,27 @@ import Foundation
 import LLMClient
 import LLMTool
 import LLMMCP
+import AgentCommunication
 
-/// プロジェクトナレッジ管理ツールキット
+/// ナレッジ管理ツールキット
 ///
-/// MemoryToolKit の後継。6つのツールでトピック指向のナレッジ管理を提供する。
-/// `ProjectContextAssembler` が自動的に TurnConfiguration に追加するため、
-/// ユーザーが意識する必要はない。
+/// 6つのツールでトピック指向のナレッジ管理を提供する。
 ///
 /// ## 提供されるツール
 ///
-/// - `project_knowledge_list`: トピック一覧取得
-/// - `project_knowledge_read`: 特定トピック読取
-/// - `project_knowledge_search`: 横断検索
-/// - `project_knowledge_save`: エントリ追加（トピック自動作成）
-/// - `project_knowledge_remove`: エントリ削除
-/// - `project_knowledge_set_core`: Core フラグ切替
-public final class ProjectKnowledgeToolKit: ToolKit, @unchecked Sendable {
-    public let name: String = "project-knowledge"
+/// - `knowledge_list`: トピック一覧取得
+/// - `knowledge_read`: 特定トピック読取
+/// - `knowledge_search`: 横断検索
+/// - `knowledge_save`: エントリ追加（トピック自動作成）
+/// - `knowledge_remove`: エントリ削除
+/// - `knowledge_set_core`: Core フラグ切替
+public final class KnowledgeToolKit: ToolKit, @unchecked Sendable {
+    public let name: String = "knowledge"
 
-    private let store: any ProjectKnowledgeStore
-    private let projectId: UUID
+    private let store: any KnowledgeStore
 
-    public init(store: any ProjectKnowledgeStore, projectId: UUID) {
+    public init(store: any KnowledgeStore) {
         self.store = store
-        self.projectId = projectId
     }
 
     // MARK: - ToolKit
@@ -38,16 +35,16 @@ public final class ProjectKnowledgeToolKit: ToolKit, @unchecked Sendable {
 
     private var listTool: BuiltInTool {
         BuiltInTool(
-            name: "project_knowledge_list",
-            description: "List all knowledge topics in the current project. Returns topic names, summaries, entry counts, and whether each topic is marked as core (auto-injected into every session).",
+            name: "knowledge_list",
+            description: "List all knowledge topics. Returns topic names, summaries, entry counts, and whether each topic is marked as core (auto-injected into every session).",
             inputSchema: .object(properties: [:], required: []),
             annotations: ToolAnnotations(
                 title: "List Knowledge Topics",
                 readOnlyHint: true,
                 openWorldHint: false
             )
-        ) { [store, projectId] _ in
-            let topics = try await store.listTopics(projectId: projectId)
+        ) { [store] _ in
+            let topics = try await store.listTopics()
             let output = topics.map { topic in
                 TopicSummary(
                     name: topic.name,
@@ -62,7 +59,7 @@ public final class ProjectKnowledgeToolKit: ToolKit, @unchecked Sendable {
 
     private var readTool: BuiltInTool {
         BuiltInTool(
-            name: "project_knowledge_read",
+            name: "knowledge_read",
             description: "Read the full contents of a specific knowledge topic, including all entries.",
             inputSchema: .object(
                 properties: [
@@ -75,9 +72,9 @@ public final class ProjectKnowledgeToolKit: ToolKit, @unchecked Sendable {
                 readOnlyHint: true,
                 openWorldHint: false
             )
-        ) { [store, projectId] data in
+        ) { [store] data in
             let input = try JSONDecoder().decode(TopicInput.self, from: data)
-            guard let topic = try await store.getTopic(projectId: projectId, named: input.topic) else {
+            guard let topic = try await store.getTopic(named: input.topic) else {
                 return .text("Topic '\(input.topic)' not found.")
             }
             return try .encodable(topic)
@@ -86,7 +83,7 @@ public final class ProjectKnowledgeToolKit: ToolKit, @unchecked Sendable {
 
     private var searchTool: BuiltInTool {
         BuiltInTool(
-            name: "project_knowledge_search",
+            name: "knowledge_search",
             description: "Search across all knowledge topics for entries matching the query.",
             inputSchema: .object(
                 properties: [
@@ -99,9 +96,9 @@ public final class ProjectKnowledgeToolKit: ToolKit, @unchecked Sendable {
                 readOnlyHint: true,
                 openWorldHint: false
             )
-        ) { [store, projectId] data in
+        ) { [store] data in
             let input = try JSONDecoder().decode(SearchInput.self, from: data)
-            let results = try await store.search(query: input.query, projectId: projectId)
+            let results = try await store.search(query: input.query)
             if results.isEmpty {
                 return .text("No results found for '\(input.query)'.")
             }
@@ -111,7 +108,7 @@ public final class ProjectKnowledgeToolKit: ToolKit, @unchecked Sendable {
 
     private var saveTool: BuiltInTool {
         BuiltInTool(
-            name: "project_knowledge_save",
+            name: "knowledge_save",
             description: "Save a knowledge entry to the internal knowledge base (not a file on the filesystem). If the topic doesn't exist, it will be created automatically. Use this to persist the assistant's own learnings: architectural decisions, user preferences, recurring patterns, or technical context that should be available in future sessions. When the user explicitly asks to save, create, or write a file, use write_file instead.",
             inputSchema: .object(
                 properties: [
@@ -127,17 +124,17 @@ public final class ProjectKnowledgeToolKit: ToolKit, @unchecked Sendable {
                 idempotentHint: false,
                 openWorldHint: false
             )
-        ) { [store, projectId] data in
+        ) { [store] data in
             let input = try JSONDecoder().decode(SaveInput.self, from: data)
             let entry = KnowledgeEntry(content: input.content)
 
             // トピックが存在しない場合、summary を使って新規作成
-            if try await store.getTopic(projectId: projectId, named: input.topic) == nil,
+            if try await store.getTopic(named: input.topic) == nil,
                let summary = input.summary {
                 let topic = KnowledgeTopic(name: input.topic, summary: summary, entries: [entry])
-                try await store.saveTopic(topic, projectId: projectId)
+                try await store.saveTopic(topic)
             } else {
-                try await store.addEntry(entry, toTopic: input.topic, projectId: projectId)
+                try await store.addEntry(entry, toTopic: input.topic)
             }
 
             return .text("Saved to topic '\(input.topic)'.")
@@ -146,7 +143,7 @@ public final class ProjectKnowledgeToolKit: ToolKit, @unchecked Sendable {
 
     private var removeTool: BuiltInTool {
         BuiltInTool(
-            name: "project_knowledge_remove",
+            name: "knowledge_remove",
             description: "Remove a specific knowledge entry from a topic by its ID.",
             inputSchema: .object(
                 properties: [
@@ -162,19 +159,19 @@ public final class ProjectKnowledgeToolKit: ToolKit, @unchecked Sendable {
                 idempotentHint: true,
                 openWorldHint: false
             )
-        ) { [store, projectId] data in
+        ) { [store] data in
             let input = try JSONDecoder().decode(RemoveInput.self, from: data)
             guard let entryId = UUID(uuidString: input.entryId) else {
                 return .error("Invalid entry ID: \(input.entryId)")
             }
-            try await store.removeEntry(entryId: entryId, fromTopic: input.topic, projectId: projectId)
+            try await store.removeEntry(entryId: entryId, fromTopic: input.topic)
             return .text("Removed entry \(input.entryId) from topic '\(input.topic)'.")
         }
     }
 
     private var setCoreTool: BuiltInTool {
         BuiltInTool(
-            name: "project_knowledge_set_core",
+            name: "knowledge_set_core",
             description: "Toggle whether a topic is 'core'. Core topics are automatically injected into the system prompt at the start of every session, ensuring the LLM always has access to this knowledge without needing to use tools.",
             inputSchema: .object(
                 properties: [
@@ -189,14 +186,14 @@ public final class ProjectKnowledgeToolKit: ToolKit, @unchecked Sendable {
                 idempotentHint: true,
                 openWorldHint: false
             )
-        ) { [store, projectId] data in
+        ) { [store] data in
             let input = try JSONDecoder().decode(SetCoreInput.self, from: data)
-            guard var topic = try await store.getTopic(projectId: projectId, named: input.topic) else {
+            guard var topic = try await store.getTopic(named: input.topic) else {
                 return .error("Topic '\(input.topic)' not found.")
             }
             topic.isCore = input.isCore
             topic.updatedAt = Date()
-            try await store.saveTopic(topic, projectId: projectId)
+            try await store.saveTopic(topic)
             let status = input.isCore ? "core (auto-injected)" : "non-core (tool-access only)"
             return .text("Topic '\(input.topic)' is now \(status).")
         }

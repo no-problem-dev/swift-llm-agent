@@ -42,10 +42,10 @@ let package = Package(
             .product(name: "LLMTool", package: "swift-llm-client"),
         ]),
         .target(name: "LLMProject", dependencies: [
-            "LLMMCP",
-            "LLMA2A",
+            "LLMMCP",  // ToolKit, BuiltInTool の定義元（将来 LLMTool に移動予定）
             "LLMAgent",
             "LLMAgentSession",
+            .product(name: "AgentCommunication", package: "swift-agent-communication"),
             .product(name: "LLMClient", package: "swift-llm-client"),
             .product(name: "LLMTool", package: "swift-llm-client"),
         ]),
@@ -94,7 +94,10 @@ let package = Package(
         .testTarget(name: "LLMMCPTests", dependencies: ["LLMMCP"]),
         .testTarget(name: "LLMA2ATests", dependencies: ["LLMA2A"]),
         .testTarget(name: "LLMAgentSessionTests", dependencies: ["LLMAgentSession"]),
-        .testTarget(name: "LLMProjectTests", dependencies: ["LLMProject"]),
+        .testTarget(name: "LLMProjectTests", dependencies: [
+            "LLMProject",
+            .product(name: "AgentCommunication", package: "swift-agent-communication"),
+        ]),
         .testTarget(name: "LLMiOSToolkitsTests", dependencies: ["LLMiOSToolkits"]),
         .testTarget(name: "LLMmacOSToolkitsTests", dependencies: ["LLMmacOSToolkits"]),
         .testTarget(name: "LLMSubAgentTests", dependencies: ["LLMSubAgent"]),
