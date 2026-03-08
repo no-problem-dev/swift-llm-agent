@@ -45,6 +45,9 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
     private let toolPool: ToolSet
     private let taskService: SubAgentTaskService<Client>?
 
+    /// output_file で使用する作業ディレクトリ
+    private let workingDirectory: String
+
     // MARK: - Initialization
 
     /// DelegateTaskTool を初期化
@@ -55,18 +58,23 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
     ///   - catalog: サブエージェントタイプのカタログ
     ///   - toolPool: サブエージェントに提供可能なツールプール（allowedTools フィルタの対象）
     ///   - taskService: バックグラウンドタスク制御サービス（nil の場合、バックグラウンド実行なし）
+    ///   - workingDirectory: output_file の相対パス解決に使用するディレクトリ
     public init(
         client: Client,
         modelResolver: @escaping ModelTierResolver<Client.Model>,
         catalog: any SubAgentCatalog,
         toolPool: ToolSet = ToolSet(),
-        taskService: SubAgentTaskService<Client>? = nil
+        taskService: SubAgentTaskService<Client>? = nil,
+        workingDirectory: String? = nil
     ) {
         self.client = client
         self.modelResolver = modelResolver
         self.catalog = catalog
         self.toolPool = toolPool
         self.taskService = taskService
+        self.workingDirectory = workingDirectory
+            ?? NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first
+            ?? NSTemporaryDirectory()
     }
 
     // MARK: - Tool Protocol
@@ -77,10 +85,17 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
         var desc = "Delegate a task to a specialized sub-agent. "
             + "Choose an agent_type from the available types and provide a detailed prompt "
             + "describing what the sub-agent should do.\n\n"
+            + "By default, the task runs in the foreground and the sub-agent's result text is returned directly "
+            + "(prefixed with [Foreground Result]). Do NOT use wait_task on foreground results — "
+            + "they are already complete.\n\n"
+            + "Use output_file to automatically save the sub-agent's result to a file. "
+            + "This is strongly recommended when the result is expected to be large (e.g., research reports). "
+            + "The file is saved automatically and you do NOT need to call write_file separately.\n\n"
 
         if taskService != nil {
             desc += "Set run_in_background to true to run the task in the background. "
-                + "Use wait_task, resume_task, cancel_task, or list_tasks to control it later.\n\n"
+                + "Background tasks return a task_id which you can use with wait_task, resume_task, "
+                + "cancel_task, or list_tasks.\n\n"
         }
 
         desc += "Available agent types:\n"
@@ -111,6 +126,12 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
             ),
             "max_steps": .integer(
                 description: "Optional step budget override for the delegated task."
+            ),
+            "output_file": .string(
+                description: "File path to save the sub-agent's result. "
+                    + "Relative paths are resolved against the working directory. "
+                    + "Use this for tasks that produce large output (e.g., research reports) "
+                    + "to avoid needing a separate write_file call."
             ),
         ]
 
@@ -215,7 +236,14 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
                 )
                 result = run.output
             }
-            return .text(result)
+
+            // output_file が指定されている場合、結果をファイルに保存
+            if let outputFile = args.outputFile {
+                let savedPath = saveResultToFile(result, path: outputFile)
+                return .text("[Foreground Result — saved to \(savedPath)]\n\(result)")
+            }
+
+            return .text("[Foreground Result]\n\(result)")
         } catch {
             return .error("Sub-agent failed: \(error.localizedDescription)")
         }
@@ -256,6 +284,35 @@ private extension DelegateTaskTool {
     func renderTaskInfo(_ info: SubAgentTaskInfo) -> String {
         SubAgentToolHelpers.renderTaskInfo(info)
     }
+
+    /// サブエージェントの結果をファイルに保存
+    ///
+    /// 相対パスは workingDirectory を基準に解決する。
+    /// 親ディレクトリが存在しない場合は自動作成する。
+    func saveResultToFile(_ content: String, path: String) -> String {
+        let expandedPath = NSString(string: path).expandingTildeInPath
+        let absolutePath: String
+        if expandedPath.hasPrefix("/") {
+            absolutePath = expandedPath
+        } else {
+            absolutePath = (workingDirectory as NSString).appendingPathComponent(expandedPath)
+        }
+
+        let resolvedPath = URL(fileURLWithPath: absolutePath).standardizedFileURL.path
+
+        // 親ディレクトリを作成
+        let parentDir = URL(fileURLWithPath: resolvedPath).deletingLastPathComponent().path
+        try? FileManager.default.createDirectory(
+            atPath: parentDir, withIntermediateDirectories: true
+        )
+
+        // ファイルに書き込み
+        if let data = content.data(using: .utf8) {
+            try? data.write(to: URL(fileURLWithPath: resolvedPath))
+        }
+
+        return resolvedPath
+    }
 }
 
 // MARK: - Arguments
@@ -270,5 +327,6 @@ extension DelegateTaskTool {
         let maxSteps: Int?
         let maxAttempts: Int?
         let awaitTimeoutSeconds: Int?
+        let outputFile: String?
     }
 }

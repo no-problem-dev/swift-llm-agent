@@ -286,7 +286,15 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
         var step = 0
         let maxSteps = configuration.maxSteps
         let softMaxSteps = configuration.softMaxSteps
-        var loopPhase: LoopPhase = .toolUse
+        let maxToolCallsPerTool = configuration.maxToolCallsPerTool
+        var toolCallCounts: [String: Int] = [:]
+        // ツールがなく構造化出力が必要な場合、toolUse フェーズをスキップして
+        // 直接 finalOutput フェーズで開始する（responseSchema 付き LLM 呼び出し）。
+        // toolUse フェーズは responseSchema を送信しないため、
+        // ツール空の場合にステップを浪費するだけで意味がない。
+        var loopPhase: LoopPhase = (tools.isEmpty && !configuration.skipFinalOutput)
+            ? .finalOutput(retryCount: 0)
+            : .toolUse
 
         do {
             while step < maxSteps {
@@ -405,22 +413,42 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                             addFinalOutputRequest()
                             continue
                         } else {
+                            // ツールなし: まず直接デコードを試み、
+                            // 失敗時は finalOutput（responseSchema 付き）にフォールスルー
                             if let output = try? decodeOutput(response, as: Output.self) {
                                 status = .idle
                                 continuation.yield(.completed(output: output))
                                 continuation.finish()
                                 return
                             } else {
-                                let error = ConversationalAgentError.outputDecodingFailed(
-                                    NSError(domain: "ConversationalAgentSession", code: -1, userInfo: [
-                                        NSLocalizedDescriptionKey: "Failed to decode output"
-                                    ])
-                                )
-                                status = .failed(error: error.localizedDescription)
-                                continuation.yield(.failed(error: error.localizedDescription))
-                                continuation.finish(throwing: error)
-                                return
+                                loopPhase = .finalOutput(retryCount: 0)
+                                addFinalOutputRequest()
+                                continue
                             }
+                        }
+                    }
+
+                    // 同一ツールの呼び出し回数制限チェック
+                    if let maxPerTool = maxToolCallsPerTool {
+                        for call in toolCalls {
+                            toolCallCounts[call.name, default: 0] += 1
+                        }
+                        if let (overTool, overCount) = toolCallCounts.first(where: { $0.value > maxPerTool }) {
+                            let limitMsg = "Tool '\(overTool)' has been called \(overCount) times, exceeding the limit of \(maxPerTool). " +
+                                "Produce your final answer using the information you already have."
+                            messages.append(LLMMessage.user(limitMsg))
+                            let interruptedStep = AgentStep.interrupted(limitMsg)
+                            continuation.yield(.running(step: interruptedStep))
+
+                            // 全ツール呼び出しにエラー応答を返す（tool_use/tool_result の対応を維持）
+                            let limitResults = toolCalls.map { call in
+                                ToolResponse(
+                                    callId: call.id, name: call.name,
+                                    output: "Error: Tool call limit exceeded for '\(overTool)' (\(maxPerTool) max). Use existing results.", isError: true
+                                )
+                            }
+                            addToolResults(limitResults)
+                            continue
                         }
                     }
 
