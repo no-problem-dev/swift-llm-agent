@@ -177,6 +177,7 @@ public actor OrchestratorAgent: ChannelAgent {
             do {
                 var didComplete = false
                 var lastText: String?
+                var didPostToChannel = false
 
                 for try await event in await streamFactory(session) {
                     guard let self else { break }
@@ -188,14 +189,19 @@ public actor OrchestratorAgent: ChannelAgent {
                         await self.postToChannel(result.markdown)
                     case .textDelta(let delta):
                         lastText = (lastText ?? "") + delta
+                    case .toolCall(let name, _):
+                        if name == "post_to_channel" {
+                            didPostToChannel = true
+                        }
                     default:
                         break
                     }
                 }
 
                 // skipFinalOutput 時: .completed が来ないため最後のテキストを投稿
+                // ただし post_to_channel を明示的に呼んだ場合は二重投稿を防ぐためスキップ
                 if !didComplete, let self {
-                    if let fallback = lastText {
+                    if let fallback = lastText, !didPostToChannel {
                         await self.postToChannel(fallback)
                     }
                     await self.yieldStep(.turnEnded)
