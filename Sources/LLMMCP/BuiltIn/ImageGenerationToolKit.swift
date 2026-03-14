@@ -76,25 +76,6 @@ public struct UnconfiguredImageGenerationProvider: ImageGenerationProvider {
 /// テキストプロンプトから画像を生成します。
 /// OpenAI (gpt-image-1) / fal.ai (FLUX.2 Schnell) / Gemini (Imagen 4) をバックエンドとして使用します。
 ///
-/// ## 使用例
-///
-/// ```swift
-/// // OpenAI gpt-image-1
-/// let tools = ToolSet {
-///     ImageGenerationToolKit.openai(apiKey: "OPENAI_KEY")
-/// }
-///
-/// // fal.ai FLUX.2 Schnell
-/// let tools = ToolSet {
-///     ImageGenerationToolKit.falai(apiKey: "FALAI_KEY")
-/// }
-///
-/// // Google Imagen 4
-/// let tools = ToolSet {
-///     ImageGenerationToolKit.gemini(apiKey: "GEMINI_KEY")
-/// }
-/// ```
-///
 /// ## 提供されるツール
 ///
 /// - `generate_image`: テキストプロンプトから画像を生成
@@ -118,10 +99,6 @@ public final class ImageGenerationToolKit: ToolKit, @unchecked Sendable {
     // MARK: - Initialization
 
     /// ImageGenerationToolKitを作成
-    ///
-    /// - Parameters:
-    ///   - provider: 画像生成プロバイダー（デフォルト: UnconfiguredImageGenerationProvider）
-    ///   - mediaSaver: 生成画像を保存するクロージャ（nil の場合は保存しない）
     public init(provider: (any ImageGenerationProvider)? = nil, mediaSaver: MediaSaver? = nil) {
         self.provider = provider ?? UnconfiguredImageGenerationProvider()
         self.mediaSaver = mediaSaver
@@ -129,32 +106,14 @@ public final class ImageGenerationToolKit: ToolKit, @unchecked Sendable {
 
     // MARK: - Factory Methods
 
-    /// OpenAI gpt-image-1 プロバイダーで ImageGenerationToolKit を作成
-    ///
-    /// - Parameters:
-    ///   - apiKey: OpenAI API キー
-    ///   - mediaSaver: 生成画像を保存するクロージャ
-    /// - Returns: 設定済みの ImageGenerationToolKit
     public static func openai(apiKey: String, mediaSaver: MediaSaver? = nil) -> ImageGenerationToolKit {
         ImageGenerationToolKit(provider: OpenAIImageProvider(apiKey: apiKey), mediaSaver: mediaSaver)
     }
 
-    /// fal.ai FLUX.2 Schnell プロバイダーで ImageGenerationToolKit を作成
-    ///
-    /// - Parameters:
-    ///   - apiKey: fal.ai API キー
-    ///   - mediaSaver: 生成画像を保存するクロージャ
-    /// - Returns: 設定済みの ImageGenerationToolKit
     public static func falai(apiKey: String, mediaSaver: MediaSaver? = nil) -> ImageGenerationToolKit {
         ImageGenerationToolKit(provider: FalAIImageProvider(apiKey: apiKey), mediaSaver: mediaSaver)
     }
 
-    /// Google Imagen 4 プロバイダーで ImageGenerationToolKit を作成
-    ///
-    /// - Parameters:
-    ///   - apiKey: Gemini API キー
-    ///   - mediaSaver: 生成画像を保存するクロージャ
-    /// - Returns: 設定済みの ImageGenerationToolKit
     public static func gemini(apiKey: String, mediaSaver: MediaSaver? = nil) -> ImageGenerationToolKit {
         ImageGenerationToolKit(provider: GeminiImageProvider(apiKey: apiKey), mediaSaver: mediaSaver)
     }
@@ -209,7 +168,7 @@ public final class ImageGenerationToolKit: ToolKit, @unchecked Sendable {
             if let mediaSaver = self.mediaSaver {
                 do {
                     let mediaId = try await mediaSaver(result.data, result.mimeType)
-                    description += " Media ID: \(mediaId). Use present_media tool with this ID to display the image to the user."
+                    description += " Media ID: \(mediaId). The image has been saved and is being displayed to the user."
                 } catch {
                     description += " Warning: Failed to save to media store: \(error.localizedDescription)"
                 }
