@@ -186,7 +186,9 @@ public actor OrchestratorAgent: ChannelAgent {
                     switch event {
                     case .completed(let result):
                         didComplete = true
-                        await self.postToChannel(result.markdown)
+                        if !didPostToChannel {
+                            await self.postToChannel(result.markdown)
+                        }
                     case .textDelta(let delta):
                         lastText = (lastText ?? "") + delta
                     case .toolCall(let name, _):
