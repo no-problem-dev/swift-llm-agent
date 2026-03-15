@@ -17,8 +17,8 @@ let package = Package(
         .library(name: "LLMSkill", targets: ["LLMSkill"]),
     ],
     dependencies: [
-        .package(path: "../swift-agent-communication"),
-        .package(path: "../swift-llm-client"),
+        .package(url: "https://github.com/no-problem-dev/swift-agent-communication.git", from: "1.0.0"),
+        .package(url: "https://github.com/no-problem-dev/swift-llm-client.git", from: "1.7.0"),
         .package(url: "https://github.com/no-problem-dev/swift-a2a.git", from: "0.1.0"),
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.10.0"),
         .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.6.0"),
