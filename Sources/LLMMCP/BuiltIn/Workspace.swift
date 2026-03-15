@@ -29,6 +29,12 @@ public struct Workspace: Sendable, Identifiable, Equatable {
     /// 外部へのアクセスにはユーザー承認を要求します。
     public let rootDirectory: String
 
+    /// 追加の許可パス
+    ///
+    /// ルートディレクトリ以外にもアクセスを許可するパス。
+    /// セッションストレージなど、ワークスペース外だがアクセスが必要なパスに使用。
+    public let additionalAllowedPaths: [String]
+
     /// ワークスペースのソース
     public let source: WorkspaceSource
 
@@ -36,12 +42,14 @@ public struct Workspace: Sendable, Identifiable, Equatable {
         id: UUID = UUID(),
         workingDirectory: String,
         rootDirectory: String,
-        source: WorkspaceSource = .automatic
+        source: WorkspaceSource = .automatic,
+        additionalAllowedPaths: [String] = []
     ) {
         self.id = id
         self.workingDirectory = workingDirectory
         self.rootDirectory = rootDirectory
         self.source = source
+        self.additionalAllowedPaths = additionalAllowedPaths
     }
 }
 

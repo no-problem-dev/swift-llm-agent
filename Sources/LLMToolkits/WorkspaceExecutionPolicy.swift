@@ -119,6 +119,12 @@ public struct WorkspaceExecutionPolicy: ToolExecutionPolicy {
     /// パスがワークスペース内かチェック
     private func isWithinWorkspace(_ path: String) -> Bool {
         let rootPath = URL(fileURLWithPath: workspace.rootDirectory).standardizedFileURL.path
-        return path.hasPrefix(rootPath)
+        if path.hasPrefix(rootPath) { return true }
+        // 追加の許可パスもチェック
+        for allowed in workspace.additionalAllowedPaths {
+            let allowedPath = URL(fileURLWithPath: allowed).standardizedFileURL.path
+            if path.hasPrefix(allowedPath) { return true }
+        }
+        return false
     }
 }

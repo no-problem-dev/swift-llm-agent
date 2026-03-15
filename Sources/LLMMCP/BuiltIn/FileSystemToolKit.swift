@@ -86,7 +86,7 @@ public final class FileSystemToolKit: ToolKit, @unchecked Sendable {
     /// - Parameter workspace: ワークスペース
     public convenience init(workspace: Workspace) {
         self.init(
-            allowedPaths: [workspace.rootDirectory],
+            allowedPaths: [workspace.rootDirectory] + workspace.additionalAllowedPaths,
             workingDirectory: workspace.workingDirectory
         )
     }

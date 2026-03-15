@@ -89,8 +89,9 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
             + "(prefixed with [Foreground Result]). Do NOT use wait_task on foreground results — "
             + "they are already complete.\n\n"
             + "Use output_file to automatically save the sub-agent's result to a file. "
-            + "This is strongly recommended when the result is expected to be large (e.g., research reports). "
-            + "The file is saved automatically and you do NOT need to call write_file separately.\n\n"
+            + "This is strongly recommended for research, investigation, and analysis tasks "
+            + "so the user can review results in the Files app. "
+            + "The file is saved to the session storage directory and you do NOT need to call write_file separately.\n\n"
 
         if taskService != nil {
             desc += "Set run_in_background to true to run the task in the background. "
