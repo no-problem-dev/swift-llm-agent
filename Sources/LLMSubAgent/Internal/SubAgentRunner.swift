@@ -133,7 +133,7 @@ package enum SubAgentRunner {
                         tools: tools,
                         toolChoice: tools.isEmpty ? nil : .auto,
                         responseSchema: nil,
-                        maxTokens: nil
+                        maxTokens: configuration.maxTokens
                     )
                     }
                 )

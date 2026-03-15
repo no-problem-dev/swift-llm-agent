@@ -339,7 +339,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                             toolChoice: tools.isEmpty ? nil : .auto,
                             responseSchema: nil,
                             thinkingMode: configuration.thinkingMode,
-                            maxTokens: nil
+                            maxTokens: configuration.maxTokens
                         ) {
                             switch event {
                             case .delta(let delta):
@@ -370,7 +370,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                             toolChoice: nil,
                             responseSchema: Output.jsonSchema,
                             thinkingMode: configuration.thinkingMode,
-                            maxTokens: nil
+                            maxTokens: configuration.maxTokens
                         ) {
                             switch event {
                             case .delta(let delta):

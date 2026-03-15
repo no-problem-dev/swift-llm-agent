@@ -105,6 +105,12 @@ public struct AgentConfiguration: Sendable {
     /// ローカル LLM など、構造化 JSON 出力が安定しないモデルに適しています。
     public let skipFinalOutput: Bool
 
+    /// 各 LLM コールの最大出力トークン数
+    ///
+    /// `nil` の場合、プラットフォーム/モデルのデフォルトが使用される。
+    /// 調査タスクや長い出力が期待される場合は大きめに設定する（例: 16384）。
+    public let maxTokens: Int?
+
     /// デフォルト設定
     public static let `default` = AgentConfiguration(
         maxSteps: 10,
@@ -122,7 +128,8 @@ public struct AgentConfiguration: Sendable {
         maxInteractiveCalls: Int? = nil,
         parallelToolExecution: Bool = true,
         thinkingMode: ThinkingMode = .disabled,
-        skipFinalOutput: Bool = false
+        skipFinalOutput: Bool = false,
+        maxTokens: Int? = nil
     ) {
         self.maxSteps = maxSteps
         self.softMaxSteps = softMaxSteps ?? max(1, maxSteps - 2)
@@ -133,6 +140,7 @@ public struct AgentConfiguration: Sendable {
         self.parallelToolExecution = parallelToolExecution
         self.thinkingMode = thinkingMode
         self.skipFinalOutput = skipFinalOutput
+        self.maxTokens = maxTokens
     }
 
     /// バックグラウンド実行用の設定を返す
@@ -150,7 +158,8 @@ public struct AgentConfiguration: Sendable {
             maxInteractiveCalls: 0,
             parallelToolExecution: parallelToolExecution,
             thinkingMode: thinkingMode,
-            skipFinalOutput: skipFinalOutput
+            skipFinalOutput: skipFinalOutput,
+            maxTokens: maxTokens
         )
     }
 }

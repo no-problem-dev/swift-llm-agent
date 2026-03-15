@@ -245,6 +245,7 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
         var messages = await context.getMessages()
         messages.sanitizeOrphanedToolUses()
         let systemPrompt = await context.getSystemPrompt()
+        let config = await context.getConfiguration()
 
         switch phase {
         case .toolUse:
@@ -260,7 +261,7 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
                     tools: tools,
                     toolChoice: tools.isEmpty ? nil : .auto,
                     responseSchema: responseSchema,
-                    maxTokens: nil
+                    maxTokens: config.maxTokens
                 )
             } catch let error as LLMError {
                 throw AgentError.llmError(error)
@@ -275,7 +276,7 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
                     tools: ToolSet {},
                     toolChoice: nil,
                     responseSchema: Output.jsonSchema,
-                    maxTokens: nil
+                    maxTokens: config.maxTokens
                 )
             } catch let error as LLMError {
                 throw AgentError.llmError(error)
