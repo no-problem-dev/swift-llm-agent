@@ -96,6 +96,15 @@ public actor OrchestratorAgent: ChannelAgent {
     /// LLM ループ外の操作に使用する。
     public var chatSession: any ChatSessionProtocol { session }
 
+    /// チャンネル参照を直接設定
+    ///
+    /// `listen(on:messages:)` の実行タイミングに依存せず、
+    /// `postToChannel()` が動作することを保証する。
+    /// `executeSkill()` 前に呼び出す。
+    public func setChannel(_ channel: Channel<String>) {
+        self.channel = channel
+    }
+
     // MARK: - Direct Commands
 
     /// スキル実行（prefill 注入 → LLM ループ起動）
