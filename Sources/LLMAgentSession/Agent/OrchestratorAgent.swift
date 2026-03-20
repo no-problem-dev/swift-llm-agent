@@ -31,7 +31,7 @@ public actor OrchestratorAgent: ChannelAgent {
     private let session: any ChatSessionProtocol
     private var channel: Channel<String>?
     private var loopTask: Task<Void, Never>?
-    private var isListening = false
+    private var listeningTask: Task<Void, Never>?
 
     /// 外部観測用のステップストリーム
     private var stepsContinuation: AsyncStream<SessionPhaseEvent>.Continuation?
@@ -71,20 +71,22 @@ public actor OrchestratorAgent: ChannelAgent {
     /// `executeSkill()` が先に実行されて status が `.processing` になっていても、
     /// チャンネルメッセージ受信ループには入る（ツール実行完了後のメッセージを受け取るため）。
     public func listen(on channel: Channel<String>, messages: AsyncStream<AgentMessage<String>>) async {
-        guard !isListening else { return }
-        isListening = true
+        guard listeningTask == nil else { return }
 
         self.channel = channel
         if status == .idle || status == .stopped {
             status = .listening
         }
 
+        // listeningTask は冪等性ガードとして使用（Task 有無で判定）
+        listeningTask = Task { /* sentinel */ }
+
         for await message in messages {
             guard !Task.isCancelled else { break }
             await handleChannelMessage(message)
         }
 
-        isListening = false
+        listeningTask = nil
         status = .stopped
     }
 

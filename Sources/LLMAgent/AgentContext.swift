@@ -163,7 +163,6 @@ public actor AgentContext {
         messages.append(message)
     }
 
-    /// ループが継続可能かチェック
     // MARK: - Tool Helpers
 
     /// ツール名からツールを検索

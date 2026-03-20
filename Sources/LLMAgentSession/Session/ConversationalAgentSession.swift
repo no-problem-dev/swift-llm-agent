@@ -579,7 +579,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
 
         } catch is CancellationError {
             status = .cancelled
-            continuation.yield(.failed(error: .cancelled))
+            continuation.yield(.paused)
             continuation.finish()
         } catch let error as ConversationalAgentError {
             let sessionError = SessionError(from: error)

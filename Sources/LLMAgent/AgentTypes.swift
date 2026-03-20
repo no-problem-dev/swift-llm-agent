@@ -5,11 +5,15 @@ import LLMTool
 // Re-export for downstream consumers
 public typealias ThinkingMode = LLMClient.ThinkingMode
 
-// MARK: - AgentStep
+// MARK: - AgentLoopStep
 
 /// エージェントループの各ステップを表す
 ///
 /// AsyncSequence で返される各要素として使用されます。
+///
+/// - Note: `LLMAgentSession.AgentStep` とは異なる型です。
+///   こちらはループ内部の実行ステップ（ジェネリクス付き）、
+///   `AgentStep` はセッション表示用のイベント（非ジェネリクス）です。
 ///
 /// ## 使用例
 ///
@@ -27,7 +31,7 @@ public typealias ThinkingMode = LLMClient.ThinkingMode
 ///     }
 /// }
 /// ```
-public enum AgentStep<Output: Sendable>: Sendable {
+public enum AgentLoopStep<Output: Sendable>: Sendable {
     /// LLM が思考中（テキスト応答を生成）
     case thinking(LLMResponse)
 

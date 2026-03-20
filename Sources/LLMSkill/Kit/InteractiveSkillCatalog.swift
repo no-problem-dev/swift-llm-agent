@@ -5,7 +5,8 @@ enum InteractiveSkillCatalog {
         do {
             return try loadBundledSkills()
         } catch {
-            preconditionFailure("Failed to load bundled interactive skills: \(error)")
+            assertionFailure("Failed to load bundled interactive skills: \(error)")
+            return []
         }
     }
 

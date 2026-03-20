@@ -25,7 +25,10 @@ public enum SessionPhase<Output: StructuredProtocol>: Sendable {
     /// - Parameter step: 現在実行中のステップ
     case running(step: AgentStep)
 
-    /// 一時停止（cancel後、再開可能）
+    /// 一時停止 / キャンセル済み（resume で再開可能）
+    ///
+    /// `SessionStatus.cancelled` 後にストリームに yield される。
+    /// 消費側は `SessionStatus` を参照して cancel か pause かを区別する。
     case paused
 
     /// 正常完了（構造化出力）

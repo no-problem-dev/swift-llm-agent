@@ -108,16 +108,23 @@ extension SessionStatus {
         return nil
     }
 
-    /// `run()` が呼び出し可能かどうか
+    /// `run()` / `sendWithPrefill()` が呼び出し可能かどうか
+    ///
+    /// 新しいターンを開始できる状態かを判定する。
+    /// アクティブに実行中（`.running`）の場合のみ不可。
     public var canRun: Bool {
-        if case .idle = self { return true }
-        return false
+        switch self {
+        case .running: return false
+        default: return true
+        }
     }
 
     /// `resume()` が呼び出し可能かどうか
+    ///
+    /// - Note: `.idle` は含まない。会話履歴がない状態では `run()` を使用すること。
     public var canResume: Bool {
         switch self {
-        case .idle, .paused, .failed: true
+        case .paused, .failed, .cancelled: true
         default: false
         }
     }
@@ -151,18 +158,7 @@ extension SessionStatus {
     }
 
     /// デバッグ用ラベル
-    public var debugLabel: String {
-        switch self {
-        case .idle: "idle"
-        case .running: "running"
-        case .interaction: "interaction"
-        case .authorization: "authorization"
-        case .paused: "paused"
-        case .cancelled: "cancelled"
-        case .completed: "completed"
-        case .failed(let err): "failed(\(err.localizedDescription))"
-        }
-    }
+    public var debugLabel: String { description }
 }
 
 // MARK: - CustomStringConvertible

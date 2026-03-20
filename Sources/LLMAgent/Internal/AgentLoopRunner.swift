@@ -17,7 +17,6 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
     private var pendingEvents: [PendingEvent] = []
     private var phase: LoopPhase = .toolUse
     private let maxDecodeRetries: Int = AgentLoopConstants.maxDecodeRetries
-    private var isCancelled: Bool = false
 
     init(client: Client, model: Client.Model, context: AgentContext, configuration: AgentConfiguration) {
         self.client = client
@@ -29,12 +28,8 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
 
     // MARK: - Public Interface
 
-    func nextStep() async throws -> AgentStep<Output>? {
+    func nextStep() async throws -> AgentLoopStep<Output>? {
         try Task.checkCancellation()
-
-        if isCancelled {
-            return nil
-        }
 
         if let event = consumePendingEvent() {
             return event
@@ -78,7 +73,6 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
     }
 
     func cancel() {
-        isCancelled = true
         phase = .completed
     }
 
@@ -87,7 +81,7 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
     private func handleDecision(
         _ decision: TerminationDecision,
         response: LLMResponse
-    ) async throws -> AgentStep<Output>? {
+    ) async throws -> AgentLoopStep<Output>? {
         switch decision {
         case .continueWithTools(let calls):
             return try await processToolCalls(calls)
@@ -99,11 +93,11 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
             return try await decodeFinalOutput(text, response: response)
 
         case .terminateImmediately(let reason):
-            return try handleImmediateTermination(reason)
+            return try await handleImmediateTermination(reason)
         }
     }
 
-    private func processToolCalls(_ calls: [ToolCall]) async throws -> AgentStep<Output>? {
+    private func processToolCalls(_ calls: [ToolCall]) async throws -> AgentLoopStep<Output>? {
         let config = await context.getConfiguration()
 
         if config.autoExecuteTools {
@@ -167,7 +161,7 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
         }
     }
 
-    private func decodeFinalOutput(_ text: String, response: LLMResponse) async throws -> AgentStep<Output>? {
+    private func decodeFinalOutput(_ text: String, response: LLMResponse) async throws -> AgentLoopStep<Output>? {
         switch phase {
         case .toolUse:
             let tools = await context.getTools()
@@ -176,11 +170,11 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
                 await context.addFinalOutputRequest()
                 return .thinking(response)
             }
-            return try decodeAndComplete(text)
+            return try await decodeAndComplete(text)
 
         case .finalOutput(let retryCount):
             do {
-                return try decodeAndComplete(text)
+                return try await decodeAndComplete(text)
             } catch {
                 let newRetryCount = retryCount + 1
                 if newRetryCount >= maxDecodeRetries {
@@ -196,18 +190,18 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
         }
     }
 
-    private func decodeAndComplete(_ text: String) throws -> AgentStep<Output> {
+    private func decodeAndComplete(_ text: String) async throws -> AgentLoopStep<Output> {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let output = try decoder.decode(Output.self, from: Data(text.utf8))
         phase = .completed
-        Task { await context.markCompleted() }
+        await context.markCompleted()
         return .finalResponse(output)
     }
 
-    private func handleImmediateTermination(_ reason: TerminationReason) throws -> AgentStep<Output>? {
+    private func handleImmediateTermination(_ reason: TerminationReason) async throws -> AgentLoopStep<Output>? {
         phase = .completed
-        Task { await context.markCompleted() }
+        await context.markCompleted()
 
         switch reason {
         case .completed, .emptyResponse, .maxStepsReached, .unexpectedStopReason:
@@ -227,7 +221,7 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
 
     // MARK: - Helper Methods
 
-    private func consumePendingEvent() -> AgentStep<Output>? {
+    private func consumePendingEvent() -> AgentLoopStep<Output>? {
         guard !pendingEvents.isEmpty else { return nil }
 
         let event = pendingEvents.removeFirst()

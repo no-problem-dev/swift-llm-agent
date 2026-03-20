@@ -463,8 +463,10 @@ public actor SubAgentTaskService<Client: AgentCapableClient>: SubAgentTaskContro
             maxDuplicateToolCalls: configuration.maxDuplicateToolCalls,
             maxToolCallsPerTool: configuration.maxToolCallsPerTool,
             maxInteractiveCalls: configuration.maxInteractiveCalls,
+            parallelToolExecution: configuration.parallelToolExecution,
             thinkingMode: configuration.thinkingMode,
-            skipFinalOutput: configuration.skipFinalOutput
+            skipFinalOutput: configuration.skipFinalOutput,
+            maxTokens: configuration.maxTokens
         )
     }
 }

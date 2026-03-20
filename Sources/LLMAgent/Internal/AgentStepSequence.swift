@@ -8,7 +8,7 @@ import LLMTool
 internal struct AgentStepSequence<Client: AgentCapableClient, Output: StructuredProtocol>: AgentStepSequenceProtocol
     where Client.Model: Sendable
 {
-    typealias Element = AgentStep<Output>
+    typealias Element = AgentLoopStep<Output>
 
     private let client: Client
     private let model: Client.Model

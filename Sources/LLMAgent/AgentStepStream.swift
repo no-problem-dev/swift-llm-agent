@@ -17,7 +17,7 @@ import LLMTool
 ///
 /// ## ステップの種類
 ///
-/// シーケンスから返される `AgentStep<Output>` は以下の4種類です：
+/// シーケンスから返される `AgentLoopStep<Output>` は以下の4種類です：
 ///
 /// - `.thinking(LLMResponse)`: LLM がテキスト応答を生成中
 /// - `.toolCall(ToolCall)`: LLM がツール呼び出しを要求
@@ -73,7 +73,7 @@ import LLMTool
 /// - Note: 内部実装の詳細（実行フェーズの監視やキャンセル機能など）は
 ///         このプロトコルでは公開されません。
 public protocol AgentStepStream<Output>: AsyncSequence, Sendable
-    where Element == AgentStep<Output>
+    where Element == AgentLoopStep<Output>
 {
     /// 構造化出力の型
     associatedtype Output: StructuredProtocol

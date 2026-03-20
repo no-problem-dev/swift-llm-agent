@@ -67,7 +67,7 @@ extension InteractionRequest: Hashable {
 /// プロトコル準拠型を保持し、`as?` で具体型を復元する。
 /// View 層では `rawValue as? ViewableInteractionPayload` で
 /// retroactive conformance を検出し、ペイロードが自身の View を返す。
-public struct InteractionPayload: @unchecked Sendable {
+public struct InteractionPayload: Sendable {
     /// 内部の existential（View 層での `as?` キャスト用に公開）
     public let rawValue: any InteractionPayloadProtocol
 

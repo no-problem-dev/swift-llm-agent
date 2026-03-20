@@ -69,11 +69,11 @@ extension ToolKit {
 
 // MARK: - BuiltInTool
 
-/// 内蔵ToolKit用のツール基底クラス
+/// 内蔵ToolKit用のツール
 ///
 /// ToolKitが提供する各ツールの共通機能を提供します。
 /// アノテーション情報を保持し、MCPToolCapabilitiesへの変換をサポートします。
-public class BuiltInTool: Tool, @unchecked Sendable {
+public struct BuiltInTool: Tool, Sendable {
     // MARK: - Properties
 
     public let toolName: String
