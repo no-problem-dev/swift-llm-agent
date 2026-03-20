@@ -2,116 +2,166 @@ import Foundation
 
 // MARK: - SessionStatus
 
-/// 会話型エージェントセッションのライフサイクル状態
+/// セッションのライフサイクル状態（SSOT）
 ///
-/// セッションの現在の状態を表す型パラメータなしの enum です。
-/// Actor 内部の状態管理および外部公開プロパティとして使用します。
-///
-/// インタラクション待ち・承認待ちは UIAgentEvent 経由で UI に通知され、
-/// セッション自体はチャネルの block で待機するため running のまま。
+/// 全レイヤー共通のセッション状態 enum。
+/// `ConversationalAgentSession`（actor 内部）と `SessionAgent`（UI 層）の
+/// 両方がこの型を使用する。
 ///
 /// ## 状態遷移図
 ///
 /// ```
 /// idle ─────── run() ────→ running
 ///    │                        │
-///    │                        ├── cancel() ──────→ paused
-///    │                        │
-///    │                        ├── 正常完了 ─────→ idle
-///    │                        │
-///    │                        └── エラー ────────→ failed
+///    │                        ├── InteractiveTool ──→ interaction
+///    │                        ├── ToolApproval ────→ authorization
+///    │                        ├── cancel() ────────→ cancelled
+///    │                        ├── 正常完了 ─────────→ completed
+///    │                        └── エラー ──────────→ failed
 ///    │
 ///    └─ resume() ─→ running (会話履歴がある場合のみ)
 ///
-/// paused ────── resume() ───→ running
-///          └── clear() ────→ idle
+/// interaction ── respond() ──→ running
+/// authorization ─ respond() ─→ running
 ///
-/// failed ────── resume() ───→ running
-///          └── clear() ────→ idle
+/// paused ──── resume() ───→ running
+///         └── clear() ────→ idle
+///
+/// cancelled ── clear() ───→ idle
+///
+/// failed ──── resume() ───→ running
+///         └── clear() ────→ idle
+///
+/// completed ── send() ────→ running (新ターン)
+///          └── clear() ───→ idle
 /// ```
 public enum SessionStatus: Sendable, Equatable {
-    /// 待機中（未開始、完了済み、または clear() 後）
+    /// 待機中（未開始、または clear() 後）
     case idle
 
-    /// 実行中（インタラクション/承認待ちも含む — チャネルで block 中）
+    /// 実行中（LLM 処理中）
     case running
 
-    /// 一時停止（cancel後、再開可能）
+    /// インタラクション待ち（InteractiveTool 起因）
+    case interaction(InteractionRequest)
+
+    /// ツール実行承認待ち（ToolExecutionPolicy 起因）
+    case authorization(ToolApprovalRequest)
+
+    /// 一時停止（再開可能）
     case paused
 
+    /// キャンセル済み（再開不可、clear で idle に戻る）
+    case cancelled
+
+    /// ターン正常完了
+    case completed
+
     /// エラー発生（再開可能）
-    case failed(error: String)
+    case failed(String)
 }
 
 // MARK: - Convenience Properties
 
 extension SessionStatus {
-    /// セッションが実行中かどうか
+    /// セッションがアクティブか（idle / completed / cancelled 以外）
     public var isActive: Bool {
-        if case .running = self {
-            return true
+        switch self {
+        case .running, .interaction, .authorization, .paused: true
+        default: false
         }
-        return false
     }
 
     /// 実行中かどうか（`running` の場合のみ）
     public var isRunning: Bool {
-        if case .running = self {
-            return true
-        }
+        if case .running = self { return true }
         return false
+    }
+
+    /// 完了したかどうか
+    public var isCompleted: Bool {
+        if case .completed = self { return true }
+        return false
+    }
+
+    /// インタラクション中かどうか
+    public var isInteracting: Bool {
+        if case .interaction = self { return true }
+        return false
+    }
+
+    /// 承認待ちかどうか
+    public var isAuthorizing: Bool {
+        if case .authorization = self { return true }
+        return false
+    }
+
+    /// インタラクションリクエスト（あれば）
+    public var interactionRequest: InteractionRequest? {
+        if case .interaction(let request) = self { return request }
+        return nil
+    }
+
+    /// 承認リクエスト（あれば）
+    public var authorizationRequest: ToolApprovalRequest? {
+        if case .authorization(let request) = self { return request }
+        return nil
     }
 
     /// `run()` が呼び出し可能かどうか
     public var canRun: Bool {
-        if case .idle = self {
-            return true
-        }
+        if case .idle = self { return true }
         return false
     }
 
     /// `resume()` が呼び出し可能かどうか
     public var canResume: Bool {
         switch self {
-        case .idle, .paused, .failed:
-            return true
-        default:
-            return false
+        case .idle, .paused, .failed: true
+        default: false
         }
     }
 
     /// `interrupt()` が呼び出し可能かどうか
     public var canInterrupt: Bool {
-        if case .running = self {
-            return true
-        }
+        if case .running = self { return true }
         return false
     }
 
     /// `cancel()` が呼び出し可能かどうか
     public var canCancel: Bool {
-        if case .running = self {
-            return true
+        switch self {
+        case .running, .interaction, .authorization: true
+        default: false
         }
-        return false
     }
 
     /// `clear()` が呼び出し可能かどうか
     public var canClear: Bool {
         switch self {
-        case .paused, .failed:
-            return true
-        default:
-            return false
+        case .paused, .cancelled, .failed, .completed: true
+        default: false
         }
     }
 
     /// エラー文字列（failed の場合のみ）
     public var error: String? {
-        if case .failed(let error) = self {
-            return error
-        }
+        if case .failed(let error) = self { return error }
         return nil
+    }
+
+    /// デバッグ用ラベル
+    public var debugLabel: String {
+        switch self {
+        case .idle: "idle"
+        case .running: "running"
+        case .interaction: "interaction"
+        case .authorization: "authorization"
+        case .paused: "paused"
+        case .cancelled: "cancelled"
+        case .completed: "completed"
+        case .failed(let msg): "failed(\(msg))"
+        }
     }
 }
 
@@ -120,12 +170,13 @@ extension SessionStatus {
 extension SessionStatus: CustomStringConvertible {
     public var description: String {
         switch self {
-        case .idle:
-            return "idle"
-        case .running:
-            return "running"
-        case .paused:
-            return "paused"
+        case .idle: return "idle"
+        case .running: return "running"
+        case .interaction: return "interaction"
+        case .authorization: return "authorization"
+        case .paused: return "paused"
+        case .cancelled: return "cancelled"
+        case .completed: return "completed"
         case .failed(let error):
             let truncated = error.prefix(30)
             return "failed(\(truncated)\(error.count > 30 ? "..." : ""))"

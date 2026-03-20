@@ -94,7 +94,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
 
     public func cancel() async {
         guard status.canCancel else { return }
-        status = .paused
+        status = .cancelled
         interruptQueue.removeAll()
     }
 
@@ -578,22 +578,22 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                 continuation.finish()
             } else {
                 let error = ConversationalAgentError.maxStepsExceeded(steps: maxSteps)
-                status = .failed(error: error.localizedDescription)
+                status = .failed(error.localizedDescription)
                 continuation.yield(.failed(error: error.localizedDescription))
                 continuation.finish(throwing: error)
             }
 
         } catch is CancellationError {
-            status = .paused
+            status = .cancelled
             continuation.yield(.paused)
             continuation.finish()
         } catch let error as ConversationalAgentError {
-            status = .failed(error: error.localizedDescription)
+            status = .failed(error.localizedDescription)
             continuation.yield(.failed(error: error.localizedDescription))
             continuation.finish(throwing: error)
         } catch {
             let wrappedError = ConversationalAgentError.invalidState(error.localizedDescription)
-            status = .failed(error: wrappedError.localizedDescription)
+            status = .failed(wrappedError.localizedDescription)
             continuation.yield(.failed(error: wrappedError.localizedDescription))
             continuation.finish(throwing: wrappedError)
         }
