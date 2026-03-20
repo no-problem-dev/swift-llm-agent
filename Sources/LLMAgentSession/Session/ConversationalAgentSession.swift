@@ -36,6 +36,12 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
     private var messages: [LLMMessage] = []
     private var interruptQueue: [String] = []
 
+    /// インタラクティブツール実行ハンドラ
+    ///
+    /// 設定されている場合、`InteractiveTool` 準拠のツールが呼ばれた際に
+    /// `execute()` ではなく `makeInteractionRequest()` → ハンドラ → `makeToolResult()` で処理する。
+    public var interactiveToolHandler: (any InteractiveToolHandler)?
+
     /// 現在のセッション状態
     public private(set) var status: SessionStatus = .idle
 
@@ -43,10 +49,12 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
 
     public init(
         client: Client,
-        initialMessages: [LLMMessage] = []
+        initialMessages: [LLMMessage] = [],
+        interactiveToolHandler: (any InteractiveToolHandler)? = nil
     ) {
         self.client = client
         self.messages = initialMessages
+        self.interactiveToolHandler = interactiveToolHandler
     }
 
     // MARK: - Protocol Conformance: Properties
@@ -507,10 +515,30 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                             toolResults = results + policyDeniedResults
                         } else {
                             let toolSet = tools
+                            let handler = self.interactiveToolHandler
                             let executed = await withTaskGroup(of: (Int, ToolResponse).self) { group in
                                 for (index, call) in approvedCalls.enumerated() {
                                     group.addTask {
                                         do {
+                                            // InteractiveTool の場合はハンドラ経由で実行
+                                            if let handler,
+                                               let tool = toolSet.tool(named: call.name),
+                                               let interactive = tool as? any InteractiveTool {
+                                                let request = try interactive.makeInteractionRequest(from: call.arguments)
+                                                let intent = InteractionIntent(
+                                                    toolCallId: call.id,
+                                                    toolName: call.name,
+                                                    request: request
+                                                )
+                                                let response = await handler.handleInteraction(intent)
+                                                let result = interactive.makeToolResult(from: response)
+                                                return (index, ToolResponse(
+                                                    callId: call.id, name: call.name,
+                                                    output: result.stringValue, isError: result.isError,
+                                                    mediaContents: result.mediaContents
+                                                ))
+                                            }
+
                                             let result = try await toolSet.execute(
                                                 toolNamed: call.name, with: call.arguments
                                             )
@@ -651,6 +679,27 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
 
     private func executeToolSafely(_ call: ToolCall, tools: ToolSet) async -> ToolResponse {
         do {
+            // InteractiveTool の場合はハンドラ経由で UI インタラクションを実行
+            if let handler = interactiveToolHandler,
+               let tool = tools.tool(named: call.name),
+               let interactive = tool as? any InteractiveTool {
+                let request = try interactive.makeInteractionRequest(from: call.arguments)
+                let intent = InteractionIntent(
+                    toolCallId: call.id,
+                    toolName: call.name,
+                    request: request
+                )
+                let response = await handler.handleInteraction(intent)
+                let result = interactive.makeToolResult(from: response)
+                return ToolResponse(
+                    callId: call.id,
+                    name: call.name,
+                    output: result.stringValue,
+                    isError: result.isError,
+                    mediaContents: result.mediaContents
+                )
+            }
+
             let result = try await tools.execute(toolNamed: call.name, with: call.arguments)
             return ToolResponse(
                 callId: call.id,
