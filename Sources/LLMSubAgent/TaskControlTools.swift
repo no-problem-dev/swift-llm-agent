@@ -211,31 +211,5 @@ private func parsedTimeout(_ timeoutSeconds: Int?) -> Duration? {
 }
 
 private func render(_ info: SubAgentTaskInfo) -> String {
-    var lines = [
-        "task_id: \(info.id.uuidString)",
-        "agent_type: \(info.agentType)",
-        "description: \(info.description)",
-        "attempt: \(info.attempt)/\(info.maxAttempts)",
-    ]
-
-    switch info.status {
-    case .queued:
-        lines.append("status: queued")
-    case .running:
-        lines.append("status: running")
-    case .paused(let reason, let note):
-        lines.append("status: paused")
-        lines.append("pause_reason: \(reason.rawValue)")
-        lines.append("note: \(note)")
-    case .completed(let result):
-        lines.append("status: completed")
-        lines.append("result: \(result)")
-    case .failed(let error):
-        lines.append("status: failed")
-        lines.append("error: \(error)")
-    case .cancelled:
-        lines.append("status: cancelled")
-    }
-
-    return lines.joined(separator: "\n")
+    SubAgentToolHelpers.renderTaskInfo(info)
 }
