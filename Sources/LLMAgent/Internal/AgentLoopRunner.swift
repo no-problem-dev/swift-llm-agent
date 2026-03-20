@@ -16,7 +16,7 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
 
     private var pendingEvents: [PendingEvent] = []
     private var phase: LoopPhase = .toolUse
-    private let maxDecodeRetries: Int = 2
+    private let maxDecodeRetries: Int = AgentLoopConstants.maxDecodeRetries
     private var isCancelled: Bool = false
 
     init(client: Client, model: Client.Model, context: AgentContext, configuration: AgentConfiguration) {
@@ -99,7 +99,7 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
             return try await decodeFinalOutput(text, response: response)
 
         case .terminateImmediately(let reason):
-            return handleImmediateTermination(reason)
+            return try handleImmediateTermination(reason)
         }
     }
 
@@ -148,6 +148,7 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
                     }
                     var indexed: [(Int, ToolResponse)] = []
                     for await pair in group {
+                        guard !Task.isCancelled else { break }
                         indexed.append(pair)
                     }
                     return indexed.sorted(by: { $0.0 < $1.0 }).map(\.1)
@@ -204,7 +205,7 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
         return .finalResponse(output)
     }
 
-    private func handleImmediateTermination(_ reason: TerminationReason) -> AgentStep<Output>? {
+    private func handleImmediateTermination(_ reason: TerminationReason) throws -> AgentStep<Output>? {
         phase = .completed
         Task { await context.markCompleted() }
 
@@ -213,16 +214,14 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
             return nil
 
         case .duplicateToolCallDetected(let toolName, let count):
-            #if DEBUG
-            print("[AgentLoop] Duplicate tool call detected: \(toolName) called \(count) times with same input")
-            #endif
-            return nil
+            throw AgentError.terminatedByPolicy(
+                "Duplicate tool call detected: '\(toolName)' called \(count) times with same input"
+            )
 
         case .maxToolCallsPerToolReached(let toolName, let count):
-            #if DEBUG
-            print("[AgentLoop] Tool call limit reached: \(toolName) called \(count) times total")
-            #endif
-            return nil
+            throw AgentError.terminatedByPolicy(
+                "Tool call limit reached: '\(toolName)' called \(count) times total"
+            )
         }
     }
 

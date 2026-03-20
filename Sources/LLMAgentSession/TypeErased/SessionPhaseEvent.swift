@@ -23,9 +23,6 @@ public enum SessionPhaseEvent: Sendable {
     /// ツール実行結果
     case toolResult(name: String, output: String, isError: Bool)
 
-    /// テキスト生成のストリーミング差分
-    case textDelta(String)
-
     /// 割り込みメッセージ
     case interrupted(String)
 
@@ -39,5 +36,5 @@ public enum SessionPhaseEvent: Sendable {
     case turnEnded
 
     /// 失敗
-    case failed(error: String)
+    case failed(error: SessionError)
 }

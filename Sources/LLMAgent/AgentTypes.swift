@@ -185,6 +185,12 @@ public enum AgentError: Error, Sendable {
 
     /// LLMエラーをラップ
     case llmError(LLMError)
+
+    /// 終了ポリシーによりループが中断された
+    ///
+    /// 重複ツール呼び出し検出やツール呼び出し回数上限到達など、
+    /// 終了ポリシーがループの即時終了を決定した場合に発生します。
+    case terminatedByPolicy(String)
 }
 
 extension AgentError: LocalizedError {
@@ -202,6 +208,8 @@ extension AgentError: LocalizedError {
             return "Failed to decode output: \(error.localizedDescription)"
         case .llmError(let error):
             return "LLM error: \(error.localizedDescription)"
+        case .terminatedByPolicy(let reason):
+            return "Agent loop terminated by policy: \(reason)"
         }
     }
 }

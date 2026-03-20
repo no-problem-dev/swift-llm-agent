@@ -221,11 +221,13 @@ public actor SubAgentTaskService<Client: AgentCapableClient>: SubAgentTaskContro
 
     public func waitForTask(id: UUID, timeout: Duration) async -> SubAgentTaskInfo? {
         let deadline = ContinuousClock.now + timeout
+        var sleepMs: UInt64 = 100
         while ContinuousClock.now < deadline {
             guard let info = taskInfo(for: id) else { return nil }
             if !info.isRunning { return info }
             do {
-                try await Task.sleep(for: .milliseconds(200))
+                try await Task.sleep(for: .milliseconds(sleepMs))
+                sleepMs = min(sleepMs * 2, 1000) // 100ms → 200ms → 400ms → 800ms → 1000ms
             } catch {
                 // Task cancelled — return current state
                 return taskInfo(for: id)
@@ -373,7 +375,7 @@ public actor SubAgentTaskService<Client: AgentCapableClient>: SubAgentTaskContro
                 eventHandler: eventHandler
             )
 
-            guard var entry = tasks[id] else { return }
+            guard var entry = tasks[id], entry.status != .cancelled else { return }
             entry.handle = nil
             entry.updatedAt = Date()
             entry.messages = result.messages
@@ -405,7 +407,7 @@ public actor SubAgentTaskService<Client: AgentCapableClient>: SubAgentTaskContro
         attempt: Int,
         interruption: SubAgentRunInterruption
     ) async {
-        guard var entry = tasks[id] else { return }
+        guard var entry = tasks[id], entry.status != .cancelled else { return }
 
         entry.handle = nil
         entry.updatedAt = Date()
@@ -441,7 +443,7 @@ public actor SubAgentTaskService<Client: AgentCapableClient>: SubAgentTaskContro
     }
 
     private func failTask(id: UUID, error: any Error) async {
-        guard var entry = tasks[id] else { return }
+        guard var entry = tasks[id], entry.status != .cancelled else { return }
         entry.handle = nil
         entry.updatedAt = Date()
         entry.status = .failed(error.localizedDescription)

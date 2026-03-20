@@ -77,25 +77,34 @@ struct CreateReminderInput: Codable {
 // MARK: - Date Helpers
 
 enum CalendarDateHelper {
+    private nonisolated(unsafe) static let isoFormatter = ISO8601DateFormatter()
+
+    private static let localDateTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        formatter.timeZone = .current
+        return formatter
+    }()
+
+    private nonisolated(unsafe) static let isoLocalFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.timeZone = .current
+        return formatter
+    }()
+
     /// ISO8601 文字列をパース（タイムゾーンなしの場合はデバイスのローカルタイムとして解釈）
     static func parseDate(_ string: String) -> Date? {
         // まず標準 ISO8601 (Z or +09:00) を試行
-        let isoFormatter = ISO8601DateFormatter()
         if let date = isoFormatter.date(from: string) {
             return date
         }
         // タイムゾーンなし → ローカルタイムとして解釈
-        let localFormatter = DateFormatter()
-        localFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-        localFormatter.timeZone = .current
-        return localFormatter.date(from: string)
+        return localDateTimeFormatter.date(from: string)
     }
 
     /// Date をデバイスのローカルタイムゾーン付き ISO8601 文字列に変換
     static func formatDate(_ date: Date) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.timeZone = .current
-        return formatter.string(from: date)
+        isoLocalFormatter.string(from: date)
     }
 }
 

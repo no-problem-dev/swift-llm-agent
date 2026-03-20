@@ -101,6 +101,6 @@ let package = Package(
         .testTarget(name: "LLMiOSToolkitsTests", dependencies: ["LLMiOSToolkits"]),
         .testTarget(name: "LLMmacOSToolkitsTests", dependencies: ["LLMmacOSToolkits"]),
         .testTarget(name: "LLMSubAgentTests", dependencies: ["LLMSubAgent"]),
-        .testTarget(name: "LLMSkillTests", dependencies: ["LLMSkill"]),
+        .testTarget(name: "LLMSkillTests", dependencies: ["LLMSkill", "LLMAgent"]),
     ]
 )

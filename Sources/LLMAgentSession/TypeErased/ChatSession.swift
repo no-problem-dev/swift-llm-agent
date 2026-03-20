@@ -41,14 +41,14 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
 
     private let session: ConversationalAgentSession<Client>
 
-    /// 現在のモデル ID
-    private var currentModelId_: String
+    /// 選択中のモデル ID
+    private var selectedModelId: String
 
-    /// 現在の出力型 ID
-    private var currentOutputTypeId_: String
+    /// 選択中の出力型 ID
+    private var selectedOutputTypeId: String
 
     /// 現在のターン設定
-    private var turnConfig_: TurnConfiguration
+    private var currentTurnConfig: TurnConfiguration
 
     /// モデルレジストリ（ID → Model）
     private var modelRegistry: [String: Client.Model]
@@ -67,9 +67,9 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
         outputRunners: [String: OutputRunner] = [:]
     ) {
         self.session = session
-        self.currentModelId_ = initialModelId
-        self.currentOutputTypeId_ = initialOutputTypeId
-        self.turnConfig_ = initialTurnConfiguration
+        self.selectedModelId = initialModelId
+        self.selectedOutputTypeId = initialOutputTypeId
+        self.currentTurnConfig = initialTurnConfiguration
         self.modelRegistry = models
         self.outputRunnerRegistry = outputRunners
     }
@@ -91,29 +91,29 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
     // MARK: - ChatSessionProtocol: Core Operations
 
     public func send(_ input: LLMInput) -> AsyncThrowingStream<SessionPhaseEvent, Error> {
-        guard let model = modelRegistry[currentModelId_],
-              let runner = outputRunnerRegistry[currentOutputTypeId_] else {
+        guard let model = modelRegistry[selectedModelId],
+              let runner = outputRunnerRegistry[selectedOutputTypeId] else {
             return AsyncThrowingStream { $0.finish(throwing: ChatSessionError.configurationMissing) }
         }
-        let config = turnConfig_
+        let config = currentTurnConfig
         return runner.run(session, input, model, config)
     }
 
     public func sendWithPrefill(_ prefill: [LLMMessage]) -> AsyncThrowingStream<SessionPhaseEvent, Error> {
-        guard let model = modelRegistry[currentModelId_],
-              let runner = outputRunnerRegistry[currentOutputTypeId_] else {
+        guard let model = modelRegistry[selectedModelId],
+              let runner = outputRunnerRegistry[selectedOutputTypeId] else {
             return AsyncThrowingStream { $0.finish(throwing: ChatSessionError.configurationMissing) }
         }
-        let config = turnConfig_
+        let config = currentTurnConfig
         return runner.runWithPrefill(session, prefill, model, config)
     }
 
     public func resume() -> AsyncThrowingStream<SessionPhaseEvent, Error> {
-        guard let model = modelRegistry[currentModelId_],
-              let runner = outputRunnerRegistry[currentOutputTypeId_] else {
+        guard let model = modelRegistry[selectedModelId],
+              let runner = outputRunnerRegistry[selectedOutputTypeId] else {
             return AsyncThrowingStream { $0.finish(throwing: ChatSessionError.configurationMissing) }
         }
-        let config = turnConfig_
+        let config = currentTurnConfig
         return runner.resume(session, model, config)
     }
 
@@ -141,17 +141,17 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
     // MARK: - ChatSessionProtocol: Turn Configuration
 
     public var turnConfiguration: TurnConfiguration {
-        turnConfig_
+        currentTurnConfig
     }
 
     public func setTurnConfiguration(_ config: TurnConfiguration) {
-        turnConfig_ = config
+        currentTurnConfig = config
     }
 
     // MARK: - ChatSessionProtocol: Model Selection
 
     public var currentModelId: String {
-        currentModelId_
+        selectedModelId
     }
 
     public var registeredModelIds: [String] {
@@ -160,13 +160,13 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
 
     public func selectModel(id: String) {
         guard modelRegistry[id] != nil else { return }
-        currentModelId_ = id
+        selectedModelId = id
     }
 
     // MARK: - ChatSessionProtocol: Output Type Selection
 
     public var currentOutputTypeId: String {
-        currentOutputTypeId_
+        selectedOutputTypeId
     }
 
     public var registeredOutputTypeIds: [String] {
@@ -175,7 +175,7 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
 
     public func selectOutputType(id: String) {
         guard outputRunnerRegistry[id] != nil else { return }
-        currentOutputTypeId_ = id
+        selectedOutputTypeId = id
     }
 
     // MARK: - OutputRunner Factory

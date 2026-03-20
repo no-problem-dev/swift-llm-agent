@@ -3,21 +3,6 @@ import LLMClient
 import LLMTool
 import LLMAgent
 
-// MARK: - LoopPhase
-
-/// エージェントループの内部フェーズ
-private enum LoopPhase: Sendable {
-    case toolUse
-    case finalOutput(retryCount: Int)
-}
-
-// MARK: - FinalOutputConstants
-
-private enum FinalOutputConstants {
-    static let maxDecodeRetries: Int = 2
-    static let requestMessage = "Please provide your final response in the required JSON format."
-}
-
 // MARK: - ConversationalAgentSession
 
 /// 会話型エージェントセッション（純粋 LLM ループエンジン）
@@ -390,6 +375,10 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                         }
                         try Task.checkCancellation()
                         response = completed
+
+                    case .completed:
+                        // .completed フェーズではループに入らないため到達しない
+                        throw ConversationalAgentError.invalidState("sendRequest called in completed phase")
                     }
                 } catch let error as LLMError {
                     throw ConversationalAgentError.llmError(error)
@@ -529,6 +518,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                 }
                                 var indexed: [(Int, ToolResponse)] = []
                                 for await pair in group {
+                                    guard !Task.isCancelled else { break }
                                     let resultStep = AgentStep.toolResult(pair.1)
                                     continuation.yield(.running(step: resultStep))
                                     indexed.append(pair)
@@ -555,13 +545,17 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                         return
                     } catch {
                         let newRetryCount = retryCount + 1
-                        if newRetryCount >= FinalOutputConstants.maxDecodeRetries {
+                        if newRetryCount >= AgentLoopConstants.maxDecodeRetries {
                             throw ConversationalAgentError.outputDecodingFailed(error)
                         }
                         loopPhase = .finalOutput(retryCount: newRetryCount)
                         addFinalOutputRequest()
                         continue
                     }
+
+                case .completed:
+                    // .completed フェーズではループに入らないため到達しない
+                    break
                 }
             }
 
@@ -577,25 +571,26 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                 continuation.yield(.completed(output: output))
                 continuation.finish()
             } else {
-                let error = ConversationalAgentError.maxStepsExceeded(steps: maxSteps)
-                status = .failed(error.localizedDescription)
-                continuation.yield(.failed(error: error.localizedDescription))
-                continuation.finish(throwing: error)
+                let sessionError = SessionError.maxStepsExceeded(steps: maxSteps)
+                status = .failed(sessionError)
+                continuation.yield(.failed(error: sessionError))
+                continuation.finish(throwing: ConversationalAgentError.maxStepsExceeded(steps: maxSteps))
             }
 
         } catch is CancellationError {
             status = .cancelled
-            continuation.yield(.paused)
+            continuation.yield(.failed(error: .cancelled))
             continuation.finish()
         } catch let error as ConversationalAgentError {
-            status = .failed(error.localizedDescription)
-            continuation.yield(.failed(error: error.localizedDescription))
+            let sessionError = SessionError(from: error)
+            status = .failed(sessionError)
+            continuation.yield(.failed(error: sessionError))
             continuation.finish(throwing: error)
         } catch {
-            let wrappedError = ConversationalAgentError.invalidState(error.localizedDescription)
-            status = .failed(wrappedError.localizedDescription)
-            continuation.yield(.failed(error: wrappedError.localizedDescription))
-            continuation.finish(throwing: wrappedError)
+            let sessionError = SessionError.unexpected(error.localizedDescription)
+            status = .failed(sessionError)
+            continuation.yield(.failed(error: sessionError))
+            continuation.finish(throwing: error)
         }
     }
 
@@ -702,7 +697,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
     }
 
     private func addFinalOutputRequest() {
-        let message = LLMMessage.user(FinalOutputConstants.requestMessage)
+        let message = LLMMessage.user(AgentLoopConstants.finalOutputRequestMessage)
         messages.append(message)
     }
 

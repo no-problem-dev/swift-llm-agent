@@ -64,11 +64,11 @@ public actor CustomSubAgentStore {
     ///
     /// ディレクトリ内の全 AGENT.md をパースして返します。
     public func loadAll() async throws -> [SubAgentTypeDefinition] {
-        return try await Task.detached { [weak self] () -> [SubAgentTypeDefinition] in
-            guard let self = self else { return [] }
+        let dir = self.directory
+        return try await Task.detached(priority: .userInitiated) {
             let fm = FileManager.default
-            guard fm.fileExists(atPath: self.directory.path) else { return [] }
-            return try SubAgentTypeLoader.loadAgentTypes(from: self.directory)
+            guard fm.fileExists(atPath: dir.path) else { return [] }
+            return try SubAgentTypeLoader.loadAgentTypes(from: dir)
         }.value
     }
 
@@ -91,9 +91,9 @@ public actor CustomSubAgentStore {
     ///
     /// `{name}/` ディレクトリごと削除します。
     public func delete(name: String) async throws {
-        return try await Task.detached { [weak self] in
-            guard let self = self else { return }
-            let agentDir = self.directory.appendingPathComponent(name)
+        let dir = self.directory
+        try await Task.detached(priority: .userInitiated) {
+            let agentDir = dir.appendingPathComponent(name)
             if FileManager.default.fileExists(atPath: agentDir.path) {
                 try FileManager.default.removeItem(at: agentDir)
             }
@@ -141,16 +141,4 @@ public actor CustomSubAgentStore {
         return yaml
     }
 
-    // MARK: - YAML Escaping
-
-    /// YAML の値をエスケープする
-    ///
-    /// 特殊文字（コロン、ダブルクォート、改行、ハッシュ、シングルクォート）を含む場合、
-    /// 値をダブルクォートで囲み、内部のバックスラッシュとダブルクォートをエスケープする。
-    private func yamlQuote(_ value: String) -> String {
-        guard value.contains(":") || value.contains("\"") || value.contains("\n") || value.contains("#") || value.contains("'") else {
-            return value
-        }
-        return "\"\(value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\""
-    }
 }

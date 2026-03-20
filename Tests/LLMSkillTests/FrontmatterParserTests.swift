@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import LLMSkill
+import LLMAgent
 
 // MARK: - FrontmatterParser Tests
 
@@ -122,7 +122,7 @@ import Foundation
         Instructions here.
         """
 
-    #expect(throws: SkillError.self) {
+    #expect(throws: FrontmatterParseError.self) {
         try FrontmatterParser.parse(content)
     }
 }
@@ -136,7 +136,7 @@ import Foundation
         Instructions here.
         """
 
-    #expect(throws: SkillError.self) {
+    #expect(throws: FrontmatterParseError.self) {
         try FrontmatterParser.parse(content)
     }
 }

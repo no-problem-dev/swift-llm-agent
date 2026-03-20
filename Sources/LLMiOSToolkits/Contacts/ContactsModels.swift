@@ -102,6 +102,12 @@ struct PostalAddressInfo: Codable, Sendable {
 
 // MARK: - CNContact Extensions
 
+private let birthdayFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd"
+    return formatter
+}()
+
 extension ContactInfo {
     init(from contact: CNContact) {
         self.id = contact.identifier
@@ -125,9 +131,7 @@ extension ContactDetailInfo {
         self.postalAddresses = contact.postalAddresses.map { PostalAddressInfo(from: $0) }
         self.birthday = contact.birthday.flatMap {
             Calendar.current.date(from: $0).map {
-                let formatter = DateFormatter()
-                formatter.dateFormat = "yyyy-MM-dd"
-                return formatter.string(from: $0)
+                birthdayFormatter.string(from: $0)
             }
         }
         self.note = contact.note.isEmpty ? nil : contact.note

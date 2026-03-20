@@ -159,9 +159,7 @@ public actor AgentContext {
     /// メッセージ配列の最後がユーザーメッセージである必要があります。
     /// このメソッドはその要件を満たすためのメッセージを追加します。
     public func addFinalOutputRequest() {
-        let message = LLMMessage.user(
-            "Please provide your final response in the required JSON format."
-        )
+        let message = LLMMessage.user(AgentLoopConstants.finalOutputRequestMessage)
         messages.append(message)
     }
 

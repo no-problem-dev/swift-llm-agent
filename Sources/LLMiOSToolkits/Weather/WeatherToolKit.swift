@@ -36,6 +36,12 @@ public final class WeatherToolKit: ToolKit, @unchecked Sendable {
     private let weatherService: WeatherService
     private let geocoder: CLGeocoder
 
+    private static let dateOnlyFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
     // MARK: - Initialization
 
     public init() {
@@ -165,9 +171,6 @@ public final class WeatherToolKit: ToolKit, @unchecked Sendable {
                 let weather = try await weatherService.weather(for: location)
                 let forecasts = Array(weather.dailyForecast.prefix(days))
 
-                let dateFormatter = DateFormatter()
-                dateFormatter.dateFormat = "yyyy-MM-dd"
-
                 var locationName: String?
                 if let name = input.location {
                     locationName = name
@@ -178,7 +181,7 @@ public final class WeatherToolKit: ToolKit, @unchecked Sendable {
 
                 let dailyForecasts = forecasts.map { day in
                     DailyForecastInfo(
-                        date: dateFormatter.string(from: day.date),
+                        date: Self.dateOnlyFormatter.string(from: day.date),
                         highTemperature: day.highTemperature.value,
                         lowTemperature: day.lowTemperature.value,
                         condition: day.condition.description,

@@ -99,7 +99,7 @@ public struct ResumeTaskTool: Tool {
         let resumed = await controller.resumeTask(
             id: taskId,
             additionalInstructions: args.additionalInstructions,
-            timeout: parsedTimeout(args.timeoutSeconds),
+            timeout: SubAgentToolHelpers.parsedTimeout(args.timeoutSeconds),
             maxSteps: args.maxSteps
         )
         guard let resumed else {
@@ -203,11 +203,6 @@ private func decode(_ data: Data) throws -> TaskControlArguments {
     let decoder = JSONDecoder()
     decoder.keyDecodingStrategy = .convertFromSnakeCase
     return try decoder.decode(TaskControlArguments.self, from: data)
-}
-
-private func parsedTimeout(_ timeoutSeconds: Int?) -> Duration? {
-    guard let timeoutSeconds, timeoutSeconds > 0 else { return nil }
-    return .seconds(min(timeoutSeconds, 1800))
 }
 
 private func render(_ info: SubAgentTaskInfo) -> String {

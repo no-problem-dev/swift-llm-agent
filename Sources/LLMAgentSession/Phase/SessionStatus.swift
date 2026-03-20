@@ -58,7 +58,7 @@ public enum SessionStatus: Sendable, Equatable {
     case completed
 
     /// エラー発生（再開可能）
-    case failed(String)
+    case failed(SessionError)
 }
 
 // MARK: - Convenience Properties
@@ -144,8 +144,8 @@ extension SessionStatus {
         }
     }
 
-    /// エラー文字列（failed の場合のみ）
-    public var error: String? {
+    /// エラー（failed の場合のみ）
+    public var error: SessionError? {
         if case .failed(let error) = self { return error }
         return nil
     }
@@ -160,7 +160,7 @@ extension SessionStatus {
         case .paused: "paused"
         case .cancelled: "cancelled"
         case .completed: "completed"
-        case .failed(let msg): "failed(\(msg))"
+        case .failed(let err): "failed(\(err.localizedDescription))"
         }
     }
 }
@@ -178,8 +178,9 @@ extension SessionStatus: CustomStringConvertible {
         case .cancelled: return "cancelled"
         case .completed: return "completed"
         case .failed(let error):
-            let truncated = error.prefix(30)
-            return "failed(\(truncated)\(error.count > 30 ? "..." : ""))"
+            let desc = error.localizedDescription
+            let truncated = desc.prefix(30)
+            return "failed(\(truncated)\(desc.count > 30 ? "..." : ""))"
         }
     }
 }

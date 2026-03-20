@@ -40,7 +40,7 @@ public enum SessionPhase<Output: StructuredProtocol>: Sendable {
     case completedText(text: String)
 
     /// エラー発生（再開可能）
-    case failed(error: String)
+    case failed(error: SessionError)
 }
 
 // MARK: - Equatable
@@ -92,8 +92,8 @@ extension SessionPhase {
         return nil
     }
 
-    /// エラー文字列（failed の場合のみ）
-    public var error: String? {
+    /// エラー（failed の場合のみ）
+    public var error: SessionError? {
         if case .failed(let error) = self {
             return error
         }
@@ -120,8 +120,9 @@ extension SessionPhase: CustomStringConvertible {
             let truncated = text.prefix(30)
             return "completedText(\(truncated)\(text.count > 30 ? "..." : ""))"
         case .failed(let error):
-            let truncated = error.prefix(30)
-            return "failed(\(truncated)\(error.count > 30 ? "..." : ""))"
+            let desc = error.localizedDescription
+            let truncated = desc.prefix(30)
+            return "failed(\(truncated)\(desc.count > 30 ? "..." : ""))"
         }
     }
 }

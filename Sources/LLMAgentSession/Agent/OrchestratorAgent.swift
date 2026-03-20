@@ -193,7 +193,6 @@ public actor OrchestratorAgent: ChannelAgent {
         loopTask = Task { [weak self] in
             do {
                 var didComplete = false
-                var lastText: String?
                 var didPostToChannel = false
 
                 for try await event in await streamFactory(session) {
@@ -206,8 +205,6 @@ public actor OrchestratorAgent: ChannelAgent {
                         if !didPostToChannel {
                             await self.postToChannel(result.markdown)
                         }
-                    case .textDelta(let delta):
-                        lastText = (lastText ?? "") + delta
                     case .toolCall(let name, _):
                         if name == "post_to_channel" {
                             didPostToChannel = true
@@ -217,19 +214,21 @@ public actor OrchestratorAgent: ChannelAgent {
                     }
                 }
 
-                // skipFinalOutput 時: .completed が来ないため最後のテキストを投稿
-                // ただし post_to_channel を明示的に呼んだ場合は二重投稿を防ぐためスキップ
+                // skipFinalOutput 時: .completed が来ないためターン終了を通知
                 if !didComplete, let self {
-                    if let fallback = lastText, !didPostToChannel {
-                        await self.postToChannel(fallback)
-                    }
                     await self.yieldStep(.turnEnded)
                 }
             } catch is CancellationError {
                 // キャンセルは正常
             } catch {
                 guard let self else { return }
-                await self.yieldStep(.failed(error: error.localizedDescription))
+                let sessionError: SessionError
+                if let agentError = error as? ConversationalAgentError {
+                    sessionError = SessionError(from: agentError)
+                } else {
+                    sessionError = .unexpected(error.localizedDescription)
+                }
+                await self.yieldStep(.failed(error: sessionError))
             }
 
             guard let self else { return }

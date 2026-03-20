@@ -7,7 +7,7 @@ import LLMTool
 /// エージェントループの実行フェーズ
 ///
 /// 外部から実行状態を監視するための公開用列挙型です。
-internal enum AgentExecutionPhase: Sendable, Equatable {
+package enum AgentExecutionPhase: Sendable, Equatable {
     /// ツール使用フェーズ
     ///
     /// LLM がツールを呼び出し可能な状態です。
@@ -29,7 +29,8 @@ internal enum AgentExecutionPhase: Sendable, Equatable {
 /// エージェントループの内部フェーズ
 ///
 /// `AgentLoopRunner` が内部的に使用するフェーズ管理用の列挙型です。
-internal enum LoopPhase: Sendable, Equatable {
+/// `LLMAgentSession` の `ConversationalAgentSession` でも共有されます。
+package enum LoopPhase: Sendable, Equatable {
     /// ツール使用フェーズ
     ///
     /// LLM がツールを呼び出し可能。`responseSchema` は送信しない。
@@ -45,7 +46,7 @@ internal enum LoopPhase: Sendable, Equatable {
     case completed
 
     /// 公開用フェーズに変換
-    var toPublic: AgentExecutionPhase {
+    package var toPublic: AgentExecutionPhase {
         switch self {
         case .toolUse:
             return .toolUse
@@ -55,6 +56,22 @@ internal enum LoopPhase: Sendable, Equatable {
             return .completed
         }
     }
+}
+
+// MARK: - AgentLoopConstants
+
+/// エージェントループで共有される定数
+///
+/// `AgentLoopRunner` と `ConversationalAgentSession` の両方で
+/// 使用される定数を一元管理します。
+package enum AgentLoopConstants {
+    /// 最終出力要求メッセージ
+    ///
+    /// 構造化出力（responseSchema）を要求する際に追加するユーザーメッセージ。
+    package static let finalOutputRequestMessage = "Please provide your final response in the required JSON format."
+
+    /// 最終出力デコードの最大再試行回数
+    package static let maxDecodeRetries: Int = 2
 }
 
 // MARK: - PendingEvent

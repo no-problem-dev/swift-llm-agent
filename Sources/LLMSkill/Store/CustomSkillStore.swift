@@ -66,11 +66,11 @@ public actor CustomSkillStore {
     ///
     /// ディレクトリ内の全 SKILL.md をパースして返します。
     public func loadAll() async throws -> [AgentSkillDefinition] {
-        return try await Task.detached { [weak self] () -> [AgentSkillDefinition] in
-            guard let self = self else { return [] }
+        let dir = self.directory
+        return try await Task.detached(priority: .userInitiated) {
             let fm = FileManager.default
-            guard fm.fileExists(atPath: self.directory.path) else { return [] }
-            return try SkillLoader.loadSkills(from: self.directory)
+            guard fm.fileExists(atPath: dir.path) else { return [] }
+            return try SkillLoader.loadSkills(from: dir)
         }.value
     }
 
@@ -93,9 +93,9 @@ public actor CustomSkillStore {
     ///
     /// `{name}/` ディレクトリごと削除します。
     public func delete(name: String) async throws {
-        return try await Task.detached { [weak self] in
-            guard let self = self else { return }
-            let skillDir = self.directory.appendingPathComponent(name)
+        let dir = self.directory
+        try await Task.detached(priority: .userInitiated) {
+            let skillDir = dir.appendingPathComponent(name)
             if FileManager.default.fileExists(atPath: skillDir.path) {
                 try FileManager.default.removeItem(at: skillDir)
             }
@@ -145,16 +145,4 @@ public actor CustomSkillStore {
         return yaml
     }
 
-    // MARK: - YAML Escaping
-
-    /// YAML の値をエスケープする
-    ///
-    /// 特殊文字（コロン、ダブルクォート、改行、ハッシュ、シングルクォート）を含む場合、
-    /// 値をダブルクォートで囲み、内部のバックスラッシュとダブルクォートをエスケープする。
-    private func yamlQuote(_ value: String) -> String {
-        guard value.contains(":") || value.contains("\"") || value.contains("\n") || value.contains("#") || value.contains("'") else {
-            return value
-        }
-        return "\"\(value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\""
-    }
 }

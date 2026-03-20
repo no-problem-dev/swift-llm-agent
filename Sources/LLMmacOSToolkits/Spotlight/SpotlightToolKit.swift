@@ -35,6 +35,8 @@ public final class SpotlightToolKit: ToolKit, @unchecked Sendable {
     /// デフォルトのタイムアウト（秒）
     private let timeout: TimeInterval
 
+    private nonisolated(unsafe) static let isoFormatter = ISO8601DateFormatter()
+
     // MARK: - Initialization
 
     /// SpotlightToolKit を作成
@@ -180,7 +182,7 @@ public final class SpotlightToolKit: ToolKit, @unchecked Sendable {
             if let attrs = try? fileManager.attributesOfItem(atPath: path) {
                 size = attrs[.size] as? Int64
                 if let date = attrs[.modificationDate] as? Date {
-                    modified = ISO8601DateFormatter().string(from: date)
+                    modified = Self.isoFormatter.string(from: date)
                 }
             }
 
