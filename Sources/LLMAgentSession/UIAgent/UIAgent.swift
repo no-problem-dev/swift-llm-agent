@@ -37,8 +37,8 @@ public actor UIAgent: ChannelAgent {
     private var eventHandler: EventHandler
     private var channel: Channel<String>?
 
-    /// ブロッキングインタラクション用の continuation
-    private var interactionContinuation: CheckedContinuation<InteractionResponse, Never>?
+    /// ブロッキングインタラクション用の continuation（キャンセル安全）
+    private var pendingInteraction: CancellableContinuation<InteractionResponse>?
 
     // MARK: - Initialization
 
@@ -82,9 +82,9 @@ public actor UIAgent: ChannelAgent {
     }
 
     public func stop() async {
-        interactionContinuation?.resume(returning: InteractionResponse(requestId: "", content: .dismissed))
-        interactionContinuation = nil
         status = .stopped
+        pendingInteraction?.cancel()
+        pendingInteraction = nil
     }
 
     // MARK: - Interaction
@@ -93,17 +93,22 @@ public actor UIAgent: ChannelAgent {
     ///
     /// emit_interaction ツールの実行を再開し、応答をチャンネルに投稿する。
     public func respondToInteraction(_ response: InteractionResponse) {
-        interactionContinuation?.resume(returning: response)
-        interactionContinuation = nil
+        pendingInteraction?.resume(returning: response)
+        pendingInteraction = nil
     }
 
     /// インタラクションを要求し、応答を待つ（ブロッキング）
     ///
     /// UIAgent の LLM ループ内からツール経由で呼ばれる。
+    /// タスクキャンセル時は `.dismissed` レスポンスを返す。
     public func requestInteraction(_ intent: InteractionIntent) async -> InteractionResponse {
         await eventHandler(.interactionRequested(intent))
-        return await withCheckedContinuation { continuation in
-            self.interactionContinuation = continuation
+        let continuation = CancellableContinuation<InteractionResponse>()
+        self.pendingInteraction = continuation
+        do {
+            return try await continuation.wait()
+        } catch {
+            return InteractionResponse(requestId: "", content: .dismissed)
         }
     }
 
