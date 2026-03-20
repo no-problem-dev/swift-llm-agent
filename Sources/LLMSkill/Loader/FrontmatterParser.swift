@@ -106,13 +106,20 @@ enum FrontmatterParser {
             }
 
             // key: value ペア
-            guard let colonIndex = trimmedLine.firstIndex(of: ":") else {
+            // コロン+スペース（": "）で分割。値にコロンが含まれていても正しく処理できる
+            let keyValueSeparator = ": "
+            guard let separatorRange = trimmedLine.range(of: keyValueSeparator) else {
+                // ": " が見つからない場合、単独のコロンで試す（末尾のコロンを除去）
+                guard trimmedLine.hasSuffix(":") else { continue }
+                let key = String(trimmedLine.dropLast()).trimmingCharacters(in: .whitespaces)
+                currentKey = key
+                currentArray = nil
                 continue
             }
 
-            let key = String(trimmedLine[trimmedLine.startIndex..<colonIndex])
+            let key = String(trimmedLine[trimmedLine.startIndex..<separatorRange.lowerBound])
                 .trimmingCharacters(in: .whitespaces)
-            let rawValue = String(trimmedLine[trimmedLine.index(after: colonIndex)...])
+            let rawValue = String(trimmedLine[separatorRange.upperBound...])
                 .trimmingCharacters(in: .whitespaces)
 
             if rawValue.isEmpty {

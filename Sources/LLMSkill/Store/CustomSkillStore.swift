@@ -65,32 +65,41 @@ public actor CustomSkillStore {
     /// 全カスタムスキルを読み込み
     ///
     /// ディレクトリ内の全 SKILL.md をパースして返します。
-    public func loadAll() throws -> [AgentSkillDefinition] {
-        let fm = FileManager.default
-        guard fm.fileExists(atPath: directory.path) else { return [] }
-        return try SkillLoader.loadSkills(from: directory)
+    public func loadAll() async throws -> [AgentSkillDefinition] {
+        return try await Task.detached { [weak self] () -> [AgentSkillDefinition] in
+            guard let self = self else { return [] }
+            let fm = FileManager.default
+            guard fm.fileExists(atPath: self.directory.path) else { return [] }
+            return try SkillLoader.loadSkills(from: self.directory)
+        }.value
     }
 
     /// カスタムスキルを保存
     ///
     /// `{name}/SKILL.md` 形式でファイルに書き込みます。
     /// 既存ファイルがあれば上書き。
-    public func save(_ data: CustomSkillFormData) throws {
-        let skillDir = directory.appendingPathComponent(data.name)
-        try FileManager.default.createDirectory(at: skillDir, withIntermediateDirectories: true)
-        let fileURL = skillDir.appendingPathComponent("SKILL.md")
+    public func save(_ data: CustomSkillFormData) async throws {
         let content = generateSkillMD(from: data)
-        try content.write(to: fileURL, atomically: true, encoding: .utf8)
+        let dir = directory
+        try await Task.detached {
+            let skillDir = dir.appendingPathComponent(data.name)
+            try FileManager.default.createDirectory(at: skillDir, withIntermediateDirectories: true)
+            let fileURL = skillDir.appendingPathComponent("SKILL.md")
+            try content.write(to: fileURL, atomically: true, encoding: .utf8)
+        }.value
     }
 
     /// カスタムスキルを削除
     ///
     /// `{name}/` ディレクトリごと削除します。
-    public func delete(name: String) throws {
-        let skillDir = directory.appendingPathComponent(name)
-        if FileManager.default.fileExists(atPath: skillDir.path) {
-            try FileManager.default.removeItem(at: skillDir)
-        }
+    public func delete(name: String) async throws {
+        return try await Task.detached { [weak self] in
+            guard let self = self else { return }
+            let skillDir = self.directory.appendingPathComponent(name)
+            if FileManager.default.fileExists(atPath: skillDir.path) {
+                try FileManager.default.removeItem(at: skillDir)
+            }
+        }.value
     }
 
     // MARK: - Private
@@ -98,12 +107,12 @@ public actor CustomSkillStore {
     /// SKILL.md テキストを生成
     private func generateSkillMD(from data: CustomSkillFormData) -> String {
         var yaml = "---\n"
-        yaml += "name: \(data.name)\n"
-        yaml += "description: \(data.description)\n"
+        yaml += "name: \(yamlQuote(data.name))\n"
+        yaml += "description: \(yamlQuote(data.description))\n"
         yaml += "context: \(data.executionMode.rawValue)\n"
 
         if !data.displayName.isEmpty && data.displayName != data.name {
-            yaml += "display-name: \(data.displayName)\n"
+            yaml += "display-name: \(yamlQuote(data.displayName))\n"
         }
         if data.iconName != "sparkles" {
             yaml += "icon: \(data.iconName)\n"
@@ -118,7 +127,7 @@ public actor CustomSkillStore {
             yaml += "model-tier: \(tierName)\n"
         }
         if let category = data.category, !category.isEmpty {
-            yaml += "category: \(category)\n"
+            yaml += "category: \(yamlQuote(category))\n"
         }
         if !data.allowedTools.isEmpty {
             yaml += "allowed-tools:\n"
@@ -134,5 +143,18 @@ public actor CustomSkillStore {
         }
 
         return yaml
+    }
+
+    // MARK: - YAML Escaping
+
+    /// YAML の値をエスケープする
+    ///
+    /// 特殊文字（コロン、ダブルクォート、改行、ハッシュ、シングルクォート）を含む場合、
+    /// 値をダブルクォートで囲み、内部のバックスラッシュとダブルクォートをエスケープする。
+    private func yamlQuote(_ value: String) -> String {
+        guard value.contains(":") || value.contains("\"") || value.contains("\n") || value.contains("#") || value.contains("'") else {
+            return value
+        }
+        return "\"\(value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\""
     }
 }

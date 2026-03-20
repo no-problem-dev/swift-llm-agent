@@ -223,10 +223,13 @@ public actor SubAgentTaskService<Client: AgentCapableClient>: SubAgentTaskContro
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
             guard let info = taskInfo(for: id) else { return nil }
-            if !info.isRunning {
-                return info
+            if !info.isRunning { return info }
+            do {
+                try await Task.sleep(for: .milliseconds(200))
+            } catch {
+                // Task cancelled — return current state
+                return taskInfo(for: id)
             }
-            try? await Task.sleep(for: .milliseconds(500))
         }
         return taskInfo(for: id)
     }

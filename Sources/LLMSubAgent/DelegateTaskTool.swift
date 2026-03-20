@@ -240,8 +240,12 @@ public struct DelegateTaskTool<Client: AgentCapableClient>: Tool
 
             // output_file が指定されている場合、結果をファイルに保存
             if let outputFile = args.outputFile {
-                let savedPath = saveResultToFile(result, path: outputFile)
-                return .text("[Foreground Result — saved to \(savedPath)]\n\(result)")
+                do {
+                    let savedPath = try saveResultToFile(result, path: outputFile)
+                    return .text("[Foreground Result — saved to \(savedPath)]\n\(result)")
+                } catch {
+                    return .text("[Foreground Result — failed to save to \(outputFile): \(error.localizedDescription)]\n\(result)")
+                }
             }
 
             return .text("[Foreground Result]\n\(result)")
@@ -290,7 +294,7 @@ private extension DelegateTaskTool {
     ///
     /// 相対パスは workingDirectory を基準に解決する。
     /// 親ディレクトリが存在しない場合は自動作成する。
-    func saveResultToFile(_ content: String, path: String) -> String {
+    func saveResultToFile(_ content: String, path: String) throws -> String {
         let expandedPath = NSString(string: path).expandingTildeInPath
         let absolutePath: String
         if expandedPath.hasPrefix("/") {
@@ -303,14 +307,15 @@ private extension DelegateTaskTool {
 
         // 親ディレクトリを作成
         let parentDir = URL(fileURLWithPath: resolvedPath).deletingLastPathComponent().path
-        try? FileManager.default.createDirectory(
+        try FileManager.default.createDirectory(
             atPath: parentDir, withIntermediateDirectories: true
         )
 
         // ファイルに書き込み
-        if let data = content.data(using: .utf8) {
-            try? data.write(to: URL(fileURLWithPath: resolvedPath))
+        guard let data = content.data(using: .utf8) else {
+            throw SubAgentError.invalidArguments("Failed to encode content as UTF-8")
         }
+        try data.write(to: URL(fileURLWithPath: resolvedPath))
 
         return resolvedPath
     }

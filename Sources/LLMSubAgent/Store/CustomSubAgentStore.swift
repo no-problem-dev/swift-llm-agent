@@ -63,32 +63,41 @@ public actor CustomSubAgentStore {
     /// 全カスタムエージェントタイプを読み込み
     ///
     /// ディレクトリ内の全 AGENT.md をパースして返します。
-    public func loadAll() throws -> [SubAgentTypeDefinition] {
-        let fm = FileManager.default
-        guard fm.fileExists(atPath: directory.path) else { return [] }
-        return try SubAgentTypeLoader.loadAgentTypes(from: directory)
+    public func loadAll() async throws -> [SubAgentTypeDefinition] {
+        return try await Task.detached { [weak self] () -> [SubAgentTypeDefinition] in
+            guard let self = self else { return [] }
+            let fm = FileManager.default
+            guard fm.fileExists(atPath: self.directory.path) else { return [] }
+            return try SubAgentTypeLoader.loadAgentTypes(from: self.directory)
+        }.value
     }
 
     /// カスタムエージェントタイプを保存
     ///
     /// `{name}/AGENT.md` 形式でファイルに書き込みます。
     /// 既存ファイルがあれば上書き。
-    public func save(_ data: CustomSubAgentFormData) throws {
-        let agentDir = directory.appendingPathComponent(data.name)
-        try FileManager.default.createDirectory(at: agentDir, withIntermediateDirectories: true)
-        let fileURL = agentDir.appendingPathComponent("AGENT.md")
+    public func save(_ data: CustomSubAgentFormData) async throws {
         let content = generateAgentMD(from: data)
-        try content.write(to: fileURL, atomically: true, encoding: .utf8)
+        let dir = directory
+        try await Task.detached {
+            let agentDir = dir.appendingPathComponent(data.name)
+            try FileManager.default.createDirectory(at: agentDir, withIntermediateDirectories: true)
+            let fileURL = agentDir.appendingPathComponent("AGENT.md")
+            try content.write(to: fileURL, atomically: true, encoding: .utf8)
+        }.value
     }
 
     /// カスタムエージェントタイプを削除
     ///
     /// `{name}/` ディレクトリごと削除します。
-    public func delete(name: String) throws {
-        let agentDir = directory.appendingPathComponent(name)
-        if FileManager.default.fileExists(atPath: agentDir.path) {
-            try FileManager.default.removeItem(at: agentDir)
-        }
+    public func delete(name: String) async throws {
+        return try await Task.detached { [weak self] in
+            guard let self = self else { return }
+            let agentDir = self.directory.appendingPathComponent(name)
+            if FileManager.default.fileExists(atPath: agentDir.path) {
+                try FileManager.default.removeItem(at: agentDir)
+            }
+        }.value
     }
 
     // MARK: - Private
@@ -96,11 +105,11 @@ public actor CustomSubAgentStore {
     /// AGENT.md テキストを生成
     private func generateAgentMD(from data: CustomSubAgentFormData) -> String {
         var yaml = "---\n"
-        yaml += "name: \(data.name)\n"
-        yaml += "description: \(data.description)\n"
+        yaml += "name: \(yamlQuote(data.name))\n"
+        yaml += "description: \(yamlQuote(data.description))\n"
 
         if !data.displayName.isEmpty && data.displayName != data.name {
-            yaml += "display-name: \(data.displayName)\n"
+            yaml += "display-name: \(yamlQuote(data.displayName))\n"
         }
         if data.iconName != "person.circle" {
             yaml += "icon: \(data.iconName)\n"
@@ -130,5 +139,18 @@ public actor CustomSubAgentStore {
         }
 
         return yaml
+    }
+
+    // MARK: - YAML Escaping
+
+    /// YAML の値をエスケープする
+    ///
+    /// 特殊文字（コロン、ダブルクォート、改行、ハッシュ、シングルクォート）を含む場合、
+    /// 値をダブルクォートで囲み、内部のバックスラッシュとダブルクォートをエスケープする。
+    private func yamlQuote(_ value: String) -> String {
+        guard value.contains(":") || value.contains("\"") || value.contains("\n") || value.contains("#") || value.contains("'") else {
+            return value
+        }
+        return "\"\(value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\""
     }
 }
