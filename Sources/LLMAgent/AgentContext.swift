@@ -20,9 +20,6 @@ public actor AgentContext {
     /// 設定
     private let configuration: AgentConfiguration
 
-    /// 現在のステップ数
-    private var currentStep: Int = 0
-
     /// ループが完了したか
     private var isCompleted: Bool = false
 
@@ -86,11 +83,6 @@ public actor AgentContext {
         tools
     }
 
-    /// 現在のステップ数を取得
-    public func getCurrentStep() -> Int {
-        currentStep
-    }
-
     /// ループが完了したかを取得
     public func getIsCompleted() -> Bool {
         isCompleted
@@ -107,16 +99,6 @@ public actor AgentContext {
     }
 
     // MARK: - State Mutation
-
-    /// ステップを進める
-    ///
-    /// - Throws: `AgentError.maxStepsExceeded` if step limit is reached
-    public func incrementStep() throws {
-        currentStep += 1
-        if currentStep > configuration.maxSteps {
-            throw AgentError.maxStepsExceeded(steps: configuration.maxSteps)
-        }
-    }
 
     /// アシスタントメッセージを追加（LLMからの応答）
     ///
@@ -184,12 +166,6 @@ public actor AgentContext {
     }
 
     /// ループが継続可能かチェック
-    ///
-    /// - Returns: 継続可能なら true
-    public func canContinue() -> Bool {
-        !isCompleted && currentStep < configuration.maxSteps
-    }
-
     // MARK: - Tool Helpers
 
     /// ツール名からツールを検索

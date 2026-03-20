@@ -6,41 +6,41 @@ import LLMTool
 
 /// ツール呼び出しの履歴レコード
 ///
-/// 重複検出の目的では `name` と `inputHash` のみで等価性を判定します。
+/// 重複検出の目的では `name` と `argumentsData` のみで等価性を判定します。
 /// `timestamp` は履歴追跡用で、等価性判定には使用されません。
 internal struct ToolCallRecord: Sendable {
     /// ツール名
     let name: String
 
-    /// 入力のハッシュ値（重複検出用）
-    let inputHash: Int
+    /// 入力データ（重複検出用 — hashValue ではなく実データで比較）
+    let argumentsData: Data
 
     /// タイムスタンプ
     let timestamp: Date
 
-    init(name: String, inputHash: Int, timestamp: Date = Date()) {
+    init(name: String, argumentsData: Data, timestamp: Date = Date()) {
         self.name = name
-        self.inputHash = inputHash
+        self.argumentsData = argumentsData
         self.timestamp = timestamp
     }
 
     /// ToolCall から作成
     init(from call: ToolCall) {
         self.name = call.name
-        self.inputHash = call.arguments.hashValue
+        self.argumentsData = call.arguments
         self.timestamp = Date()
     }
 }
 
 extension ToolCallRecord: Hashable {
-    /// 重複検出用の等価性判定（name と inputHash のみ比較）
+    /// 重複検出用の等価性判定（name と argumentsData のみ比較）
     static func == (lhs: ToolCallRecord, rhs: ToolCallRecord) -> Bool {
-        lhs.name == rhs.name && lhs.inputHash == rhs.inputHash
+        lhs.name == rhs.name && lhs.argumentsData == rhs.argumentsData
     }
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(name)
-        hasher.combine(inputHash)
+        hasher.combine(argumentsData)
     }
 }
 
@@ -130,9 +130,9 @@ package actor AgentLoopStateManager: AgentLoopContext {
     }
 
     /// 重複するツール呼び出し（同名・同入力）をカウント
-    package func countDuplicateToolCalls(name: String, inputHash: Int) -> Int {
+    package func countDuplicateToolCalls(name: String, argumentsData: Data) -> Int {
         toolCallHistory.filter {
-            $0.name == name && $0.inputHash == inputHash
+            $0.name == name && $0.argumentsData == argumentsData
         }.count
     }
 
@@ -204,7 +204,7 @@ package actor AgentLoopStateManager: AgentLoopContext {
 
         var count = 0
         for record in toolCallHistory.reversed() {
-            if record.name == lastCall.name && record.inputHash == lastCall.inputHash {
+            if record.name == lastCall.name && record.argumentsData == lastCall.argumentsData {
                 count += 1
             } else {
                 break

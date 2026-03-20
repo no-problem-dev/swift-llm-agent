@@ -63,7 +63,7 @@ package protocol AgentLoopContext: Sendable {
     func countToolCalls(named name: String) async -> Int
 
     /// 重複するツール呼び出し（同名・同入力）をカウント
-    func countDuplicateToolCalls(name: String, inputHash: Int) async -> Int
+    func countDuplicateToolCalls(name: String, argumentsData: Data) async -> Int
 }
 
 // MARK: - AgentTerminationPolicy
@@ -245,10 +245,9 @@ internal struct DuplicateDetectionPolicy: AgentTerminationPolicy {
             }
 
             // 2. 同一入力の重複チェック
-            let inputHash = call.arguments.hashValue
             let duplicateCount = await context.countDuplicateToolCalls(
                 name: call.name,
-                inputHash: inputHash
+                argumentsData: call.arguments
             )
 
             if duplicateCount >= maxDuplicates {
@@ -281,25 +280,21 @@ internal struct CompositeTerminationPolicy: AgentTerminationPolicy {
         response: LLMResponse,
         context: any AgentLoopContext
     ) async -> TerminationDecision {
+        var lastDecision: TerminationDecision = .terminateImmediately(.completed)
+
         for policy in policies {
             let decision = await policy.shouldTerminate(response: response, context: context)
+            lastDecision = decision
 
-            // 終了判定が出たらそれを採用
             switch decision {
             case .terminateWithOutput, .terminateImmediately:
                 return decision
             case .continueWithTools, .continueWithThinking:
-                continue
+                break
             }
         }
 
-        // どのポリシーも終了判定を出さなかった場合
-        // 最後のポリシーの結果を返す（通常はここには来ない）
-        if let lastPolicy = policies.last {
-            return await lastPolicy.shouldTerminate(response: response, context: context)
-        }
-
-        return .terminateImmediately(.completed)
+        return lastDecision
     }
 }
 
