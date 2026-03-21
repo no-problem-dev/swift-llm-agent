@@ -9,6 +9,20 @@ import MCP
 /// SDKの`StdioTransport`とは異なり、このトランスポートは
 /// 外部プロセスを起動する側として動作します。
 internal actor ProcessTransport: Transport {
+    // MARK: - ConnectionState
+
+    private enum ConnectionState {
+        case disconnected
+        case connected(
+            process: Process,
+            stdin: Pipe,
+            stdout: Pipe,
+            stderr: Pipe,
+            readLoopTask: Task<Void, Never>,
+            stderrTask: Task<Void, Never>
+        )
+    }
+
     // MARK: - Properties
 
     public nonisolated let logger: Logger
@@ -17,12 +31,7 @@ internal actor ProcessTransport: Transport {
     private let arguments: [String]
     private let environment: [String: String]
 
-    private var process: Process?
-    private var stdinPipe: Pipe?
-    private var stdoutPipe: Pipe?
-    private var stderrPipe: Pipe?
-
-    private var isConnected = false
+    private var state: ConnectionState = .disconnected
     private let messageStream: AsyncThrowingStream<Data, Swift.Error>
     private let messageContinuation: AsyncThrowingStream<Data, Swift.Error>.Continuation
 
@@ -59,7 +68,7 @@ internal actor ProcessTransport: Transport {
 
     /// プロセスを起動して接続を確立
     public func connect() async throws {
-        guard !isConnected else { return }
+        guard case .disconnected = state else { return }
 
         logger.debug("Starting MCP server process", metadata: [
             "command": "\(command)",
@@ -70,10 +79,6 @@ internal actor ProcessTransport: Transport {
         let stdinPipe = Pipe()
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
-
-        self.stdinPipe = stdinPipe
-        self.stdoutPipe = stdoutPipe
-        self.stderrPipe = stderrPipe
 
         // プロセスを設定
         let process = Process()
@@ -90,46 +95,56 @@ internal actor ProcessTransport: Transport {
         }
         process.environment = processEnvironment
 
-        self.process = process
-
         // プロセスを起動
         do {
             try process.run()
-            isConnected = true
             logger.debug("MCP server process started", metadata: ["pid": "\(process.processIdentifier)"])
         } catch {
             logger.error("Failed to start MCP server process", metadata: ["error": "\(error)"])
             throw MCP.MCPError.transportError(error)
         }
 
-        // stderrを監視（デバッグ用）
-        Task {
+        // Taskを作成（状態に格納）
+        let readLoopTask = Task {
+            await readLoop()
+        }
+
+        let stderrTask = Task {
             await monitorStderr()
         }
 
-        // stdoutからメッセージを読み取るループを開始
-        Task {
-            await readLoop()
-        }
+        state = .connected(
+            process: process,
+            stdin: stdinPipe,
+            stdout: stdoutPipe,
+            stderr: stderrPipe,
+            readLoopTask: readLoopTask,
+            stderrTask: stderrTask
+        )
     }
 
     /// 接続を切断してプロセスを終了
     public func disconnect() async {
-        guard isConnected else { return }
-        isConnected = false
+        guard case .connected(let process, let stdin, let stdout, let stderr, let readLoopTask, let stderrTask) = state else {
+            return
+        }
 
         logger.debug("Disconnecting MCP server process")
+
+        // Taskをキャンセル
+        readLoopTask.cancel()
+        stderrTask.cancel()
 
         // ストリームを終了
         messageContinuation.finish()
 
         // パイプを閉じる
-        stdinPipe?.fileHandleForWriting.closeFile()
-        stdoutPipe?.fileHandleForReading.closeFile()
-        stderrPipe?.fileHandleForReading.closeFile()
+        stdin.fileHandleForWriting.closeFile()
+        stdout.fileHandleForReading.closeFile()
+        stderr.fileHandleForReading.closeFile()
 
         // プロセスを終了
-        if let process = process, process.isRunning {
+        if process.isRunning {
             process.terminate()
             // 少し待ってからkill
             try? await Task.sleep(for: .milliseconds(100))
@@ -138,22 +153,15 @@ internal actor ProcessTransport: Transport {
             }
         }
 
-        process = nil
-        stdinPipe = nil
-        stdoutPipe = nil
-        stderrPipe = nil
+        state = .disconnected
 
         logger.debug("MCP server process disconnected")
     }
 
     /// データを送信
     public func send(_ data: Data) async throws {
-        guard isConnected else {
+        guard case .connected(_, let stdin, _, _, _, _) = state else {
             throw MCP.MCPError.internalError("Transport not connected")
-        }
-
-        guard let stdinPipe = stdinPipe else {
-            throw MCP.MCPError.internalError("stdin pipe not available")
         }
 
         // 改行を追加してJSON-RPCメッセージを区切る
@@ -163,7 +171,7 @@ internal actor ProcessTransport: Transport {
         logger.trace("Sending message", metadata: ["size": "\(data.count)"])
 
         do {
-            try stdinPipe.fileHandleForWriting.write(contentsOf: messageData)
+            try stdin.fileHandleForWriting.write(contentsOf: messageData)
         } catch {
             logger.error("Failed to send message", metadata: ["error": "\(error)"])
             throw MCP.MCPError.transportError(error)
@@ -179,12 +187,12 @@ internal actor ProcessTransport: Transport {
 
     /// stdoutからメッセージを読み取るループ
     private func readLoop() async {
-        guard let stdoutPipe = stdoutPipe else { return }
+        guard case .connected(_, _, let stdout, _, _, _) = state else { return }
 
-        let fileHandle = stdoutPipe.fileHandleForReading
+        let fileHandle = stdout.fileHandleForReading
         var pendingData = Data()
 
-        while isConnected && !Task.isCancelled {
+        while !Task.isCancelled {
             do {
                 // availableDataを使用して非同期的に読み取る
                 let data = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
@@ -226,11 +234,11 @@ internal actor ProcessTransport: Transport {
 
     /// stderrを監視してログに出力
     private func monitorStderr() async {
-        guard let stderrPipe = stderrPipe else { return }
+        guard case .connected(_, _, _, let stderr, _, _) = state else { return }
 
-        let fileHandle = stderrPipe.fileHandleForReading
+        let fileHandle = stderr.fileHandleForReading
 
-        while isConnected && !Task.isCancelled {
+        while !Task.isCancelled {
             let data = fileHandle.availableData
             if data.isEmpty { break }
 

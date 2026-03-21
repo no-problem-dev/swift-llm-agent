@@ -39,8 +39,12 @@ public actor FileProjectStore: ProjectStore {
             let projectFile = dir.appendingPathComponent("project.json")
             guard fm.fileExists(atPath: projectFile.path),
                   let data = fm.contents(atPath: projectFile.path) else { continue }
-            if let project = try? decoder.decode(Project.self, from: data) {
+            do {
+                let project = try decoder.decode(Project.self, from: data)
                 projects.append(project)
+            } catch {
+                // Log decode error but continue to next project
+                print("Failed to decode project at \(projectFile.path): \(error)")
             }
         }
 

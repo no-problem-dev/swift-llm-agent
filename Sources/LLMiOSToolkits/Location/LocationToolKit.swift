@@ -34,7 +34,7 @@ public final class LocationToolKit: ToolKit, @unchecked Sendable {
 
     private let locationManager: CLLocationManager
     private let delegate: LocationManagerDelegate
-    private let guard_: PermissionGuard
+    private let permissionGuard: PermissionGuard
     private let geocoder: CLGeocoder
 
     // MARK: - Initialization
@@ -44,7 +44,7 @@ public final class LocationToolKit: ToolKit, @unchecked Sendable {
         self.locationManager = CLLocationManager()
         self.delegate = LocationManagerDelegate()
         self.locationManager.delegate = delegate
-        self.guard_ = PermissionGuard(
+        self.permissionGuard = PermissionGuard(
             provider: LocationPermission(
                 locationManager: locationManager,
                 delegate: delegate
@@ -80,8 +80,8 @@ public final class LocationToolKit: ToolKit, @unchecked Sendable {
                 readOnlyHint: true,
                 openWorldHint: false
             )
-        ) { [guard_, locationManager, delegate, geocoder] data in
-            if let error = await guard_.ensureAuthorized() { return error }
+        ) { [permissionGuard, locationManager, delegate, geocoder] data in
+            if let error = await permissionGuard.ensureAuthorized() { return error }
 
             // AsyncStream で能動的に位置を取得（キャッシュ依存を排除）
             let stream = delegate.locationStream()
@@ -110,7 +110,9 @@ public final class LocationToolKit: ToolKit, @unchecked Sendable {
                         throw LocationError.locationTimeout
                     }
 
-                    let result = try await group.next()!
+                    guard let result = try await group.next() else {
+                        throw LocationError.locationUnavailable
+                    }
                     group.cancelAll()
                     return result
                 }
@@ -181,8 +183,8 @@ public final class LocationToolKit: ToolKit, @unchecked Sendable {
                 readOnlyHint: true,
                 openWorldHint: true
             )
-        ) { [guard_, locationManager] data in
-            if let error = await guard_.ensureAuthorized() { return error }
+        ) { [permissionGuard, locationManager] data in
+            if let error = await permissionGuard.ensureAuthorized() { return error }
 
             let input = try JSONDecoder().decode(SearchPlacesInput.self, from: data)
             let limit = min(input.limit ?? 10, 50)
@@ -273,8 +275,8 @@ public final class LocationToolKit: ToolKit, @unchecked Sendable {
                 readOnlyHint: true,
                 openWorldHint: true
             )
-        ) { [guard_, locationManager, geocoder] data in
-            if let error = await guard_.ensureAuthorized() { return error }
+        ) { [permissionGuard, locationManager, geocoder] data in
+            if let error = await permissionGuard.ensureAuthorized() { return error }
 
             let input = try JSONDecoder().decode(GetDirectionsInput.self, from: data)
 

@@ -12,14 +12,14 @@ import LLMAgent
 
 @Test func testInteractiveSkillCatalogLoadsBundledSkills() throws {
     let skills = try InteractiveSkillCatalog.loadBundledSkills()
-    #expect(skills.count == 21)
+    #expect(skills.count == 25)
     #expect(skills.first?.name == "scan")
-    #expect(skills.last?.name == "create_agent")
+    #expect(skills.last?.name == "info_diet")
 }
 
 @Test func testInteractiveSkillKitContainsEighteenSkills() {
     let kit = InteractiveSkillKit()
-    #expect(kit.skillCount == 21)
+    #expect(kit.skillCount == 25)
 }
 
 @Test func testInteractiveSkillKitSkillNames() {
@@ -28,10 +28,10 @@ import LLMAgent
         "capture_to_tasks", "compare", "context_restart",
         "create_agent", "create_project", "create_skill",
         "decide", "digest", "draft",
-        "explain", "focus", "journal",
-        "learn", "meeting_prep", "morning",
+        "explain", "focus", "get_it_done", "info_diet", "journal",
+        "knowledge_anchor", "learn", "meeting_prep", "morning",
         "next_action", "quick_note", "research",
-        "scan", "session_recall", "untangle",
+        "scan", "session_recall", "smart_spending", "untangle",
     ]))
 }
 
@@ -79,7 +79,7 @@ import LLMAgent
         InteractiveSkillKit()
     }
 
-    #expect(registry.skills.count == 21)
+    #expect(registry.skills.count == 25)
     #expect(registry.skill(named: "morning") != nil)
     #expect(registry.skill(named: "learn") != nil)
     #expect(registry.skill(named: "context_restart") != nil)
@@ -95,7 +95,7 @@ import LLMAgent
         )
     }
 
-    #expect(registry.skills.count == 22)
+    #expect(registry.skills.count == 26)
     #expect(registry.skill(named: "morning") != nil)
     #expect(registry.skill(named: "custom") != nil)
 }
@@ -128,6 +128,6 @@ private struct TestSkillKit: SkillKit {
         TestSkillKit()
     }
 
-    #expect(registry.skills.count == 22)
+    #expect(registry.skills.count == 26)
     #expect(registry.skill(named: "skill-a") != nil)
 }

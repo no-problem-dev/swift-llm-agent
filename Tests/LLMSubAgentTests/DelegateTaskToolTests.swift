@@ -140,7 +140,8 @@ import LLMAgent
     let data = try JSONSerialization.data(withJSONObject: args)
     let result = try await tool.execute(with: data)
     #expect(!result.isError)
-    #expect(result.stringValue == "Mock response")
+    #expect(result.stringValue.contains("[Foreground Result]"))
+    #expect(result.stringValue.contains("Mock response"))
 }
 
 // MARK: - Background Mode Schema Tests
@@ -262,6 +263,7 @@ private struct MockAgentClient: AgentCapableClient {
         tools: ToolSet,
         toolChoice: ToolChoice?,
         responseSchema: JSONSchema?,
+        thinkingMode: ThinkingMode,
         maxTokens: Int?
     ) async throws -> LLMResponse {
         LLMResponse(
@@ -277,7 +279,7 @@ private struct MockAgentClient: AgentCapableClient {
         model: String,
         tools: ToolSet,
         toolChoice: ToolChoice?,
-        systemPrompt: String?,
+        systemPrompt: SystemPrompt?,
         temperature: Double?,
         maxTokens: Int?
     ) async throws -> ToolCallResponse {

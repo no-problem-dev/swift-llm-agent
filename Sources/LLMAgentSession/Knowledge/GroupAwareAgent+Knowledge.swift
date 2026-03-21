@@ -21,7 +21,7 @@ extension GroupAwareAgent {
     ) async throws -> [PromptComponent] {
         guard let workspace = self.workspace else { return [] }
         guard let store = await workspace.knowledgeStore(
-            forGroup: groupId,
+            forGroup: GroupID(rawValue: groupId),
             requestedBy: participantId
         ) else { return [] }
         return try await assembler.promptComponents(from: store, label: "group_knowledge")

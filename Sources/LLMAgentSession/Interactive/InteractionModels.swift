@@ -4,12 +4,12 @@ import Foundation
 
 /// 選択肢
 public struct SelectionOption: Sendable, Codable, Identifiable {
-    public let id: String
+    public let id: UUID
     public let label: String
     public let description: String?
 
     public init(
-        id: String = UUID().uuidString,
+        id: UUID = UUID(),
         label: String,
         description: String? = nil
     ) {
@@ -23,14 +23,14 @@ public struct SelectionOption: Sendable, Codable, Identifiable {
 
 /// アクションボタン
 public struct ActionOption: Sendable, Codable, Identifiable {
-    public let id: String
+    public let id: UUID
     public let label: String
     public let icon: String?
     public let style: ActionStyle
     public let message: String
 
     public init(
-        id: String = UUID().uuidString,
+        id: UUID = UUID(),
         label: String,
         icon: String? = nil,
         style: ActionStyle = .standard,
@@ -55,13 +55,13 @@ public struct ActionOption: Sendable, Codable, Identifiable {
 
 /// クイックリプライ
 public struct QuickReplyOption: Sendable, Codable, Identifiable {
-    public let id: String
+    public let id: UUID
     public let label: String
     public let icon: String?
     public let message: String
 
     public init(
-        id: String = UUID().uuidString,
+        id: UUID = UUID(),
         label: String,
         icon: String? = nil,
         message: String

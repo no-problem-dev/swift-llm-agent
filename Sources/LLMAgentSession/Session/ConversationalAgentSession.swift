@@ -237,7 +237,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                 }
             } else if message.role == .user {
                 for content in message.contents {
-                    if case .toolResult(let toolCallId, _, _, _) = content {
+                    if case .toolResult(let toolCallId, _, _) = content {
                         pendingToolUseIds.removeAll { $0.id == toolCallId }
                     }
                 }
@@ -249,8 +249,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                 LLMMessage.MessageContent.toolResult(
                     toolCallId: toolUse.id,
                     name: toolUse.name,
-                    content: "Session was interrupted. Continuing from where we left off.",
-                    isError: false
+                    content: .success( "Session was interrupted. Continuing from where we left off.")
                 )
             }
             messages.append(LLMMessage(role: .user, contents: dummyResults))
@@ -433,7 +432,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                             let limitResults = toolCalls.map { call in
                                 ToolResponse(
                                     callId: call.id, name: call.name,
-                                    output: "Error: Tool call limit exceeded for '\(overTool)' (\(maxPerTool) max). Use existing results.", isError: true
+                                    content: .failure( "Error: Tool call limit exceeded for '\(overTool)' (\(maxPerTool) max). Use existing results.")
                                 )
                             }
                             addToolResults(limitResults)
@@ -461,7 +460,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                 case .deny(let reason):
                                     let result = ToolResponse(
                                         callId: call.id, name: call.name,
-                                        output: "Denied: \(reason)", isError: true
+                                        content: .failure( "Denied: \(reason)")
                                     )
                                     policyDeniedResults.append(result)
                                     let resultStep = AgentStep.toolResult(result)
@@ -471,7 +470,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                     // ここでは deny にフォールバック
                                     let result = ToolResponse(
                                         callId: call.id, name: call.name,
-                                        output: "Denied: Requires approval (not available in current context)", isError: true
+                                        content: .failure( "Denied: Requires approval (not available in current context)")
                                     )
                                     policyDeniedResults.append(result)
                                     let resultStep = AgentStep.toolResult(result)
@@ -505,13 +504,13 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                                             )
                                             return (index, ToolResponse(
                                                 callId: call.id, name: call.name,
-                                                output: result.stringValue, isError: result.isError,
+                                                content: .success( result.stringValue),
                                                 mediaContents: result.mediaContents
                                             ))
                                         } catch {
                                             return (index, ToolResponse(
                                                 callId: call.id, name: call.name,
-                                                output: "Error: \(error.localizedDescription)", isError: true
+                                                content: .failure( "Error: \(error.localizedDescription)")
                                             ))
                                         }
                                     }
@@ -626,8 +625,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
             LLMMessage.MessageContent.toolResult(
                 toolCallId: result.callId,
                 name: result.name,
-                content: result.output,
-                isError: result.isError
+                content: result.content
             )
         }
         let allMedia = results.flatMap(\.mediaContents) + extraImages
@@ -650,16 +648,14 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
             return ToolResponse(
                 callId: call.id,
                 name: call.name,
-                output: result.stringValue,
-                isError: result.isError,
+                content: .success( result.stringValue),
                 mediaContents: result.mediaContents
             )
         } catch {
             return ToolResponse(
                 callId: call.id,
                 name: call.name,
-                output: "Error: \(error.localizedDescription)",
-                isError: true
+                content: .failure( "Error: \(error.localizedDescription)")
             )
         }
     }

@@ -20,7 +20,7 @@ import Foundation
 /// ```
 public struct InteractionRequest: Sendable, Identifiable {
     /// 要求の一意識別子
-    public let id: String
+    public let id: UUID
 
     /// ユーザーに表示するプロンプト文
     public let prompt: String
@@ -32,7 +32,7 @@ public struct InteractionRequest: Sendable, Identifiable {
     public let dismissible: Bool
 
     public init(
-        id: String = UUID().uuidString,
+        id: UUID = UUID(),
         prompt: String,
         payload: InteractionPayload,
         dismissible: Bool = false

@@ -104,6 +104,7 @@ private struct FastMockClient: AgentCapableClient {
         tools: ToolSet,
         toolChoice: ToolChoice?,
         responseSchema: JSONSchema?,
+        thinkingMode: ThinkingMode,
         maxTokens: Int?
     ) async throws -> LLMResponse {
         LLMResponse(
@@ -119,7 +120,7 @@ private struct FastMockClient: AgentCapableClient {
         model: String,
         tools: ToolSet,
         toolChoice: ToolChoice?,
-        systemPrompt: String?,
+        systemPrompt: SystemPrompt?,
         temperature: Double?,
         maxTokens: Int?
     ) async throws -> ToolCallResponse {
@@ -163,6 +164,7 @@ private struct SlowMockClient: AgentCapableClient {
         tools: ToolSet,
         toolChoice: ToolChoice?,
         responseSchema: JSONSchema?,
+        thinkingMode: ThinkingMode,
         maxTokens: Int?
     ) async throws -> LLMResponse {
         try await Task.sleep(for: .milliseconds(200))
@@ -179,7 +181,7 @@ private struct SlowMockClient: AgentCapableClient {
         model: String,
         tools: ToolSet,
         toolChoice: ToolChoice?,
-        systemPrompt: String?,
+        systemPrompt: SystemPrompt?,
         temperature: Double?,
         maxTokens: Int?
     ) async throws -> ToolCallResponse {

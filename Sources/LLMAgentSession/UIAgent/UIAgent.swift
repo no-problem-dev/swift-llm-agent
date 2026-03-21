@@ -62,7 +62,7 @@ public actor UIAgent: ChannelAgent {
     /// タイミング制御が必要な場合は `listen(on:messages:)` を使用する。
     public func start(on channel: Channel<String>) async {
         guard status == .idle || status == .stopped else { return }
-        let messageStream = await channel.subscribe(as: agentId)
+        let messageStream = await channel.subscribe(as: ParticipantID(rawValue: agentId))
         await listen(on: channel, messages: messageStream)
     }
 
@@ -108,7 +108,7 @@ public actor UIAgent: ChannelAgent {
         do {
             return try await continuation.wait()
         } catch {
-            return InteractionResponse(requestId: "", content: .dismissed)
+            return InteractionResponse(requestId: UUID(), content: .dismissed)
         }
     }
 
@@ -123,7 +123,7 @@ public actor UIAgent: ChannelAgent {
 
     /// チャンネルにテキストを投稿
     public func postToChannel(_ text: String) async {
-        await channel?.post(text, from: agentId)
+        await channel?.post(text, from: ParticipantID(rawValue: agentId))
     }
 
     // MARK: - Private

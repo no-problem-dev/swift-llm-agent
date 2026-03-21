@@ -141,8 +141,7 @@ public actor AgentContext {
             LLMMessage.MessageContent.toolResult(
                 toolCallId: result.callId,
                 name: result.name,
-                content: result.output,
-                isError: result.isError
+                content: result.content
             )
         }
         messages.append(LLMMessage(role: .user, contents: contents))

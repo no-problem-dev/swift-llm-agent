@@ -176,8 +176,8 @@ internal actor A2AClientAdapter {
         case .completed: stateString = "completed"
         case .canceled: stateString = "canceled"
         case .failed: stateString = "failed"
-        case .unknown: stateString = "unknown"
         case .authRequired: stateString = "auth-required"
+        @unknown default: stateString = "unknown"
         }
 
         // ステータスメッセージのテキストを抽出

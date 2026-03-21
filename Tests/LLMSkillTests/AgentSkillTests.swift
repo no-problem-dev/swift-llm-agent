@@ -36,8 +36,7 @@ import LLMAgent
         instructions: "Do the work.",
         allowedTools: ["read_file", "search"],
         configuration: config,
-        isUserInvocable: false,
-        isModelInvocable: true,
+        invocationMode: .modelOnly,
         argumentHint: "[topic]",
         metadata: SkillMetadata(license: "MIT", author: "test")
     )

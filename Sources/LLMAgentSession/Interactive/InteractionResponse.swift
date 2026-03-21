@@ -10,12 +10,12 @@ import LLMClient
 /// または新しいターンを開始する（Layer 2）。
 public struct InteractionResponse: Sendable {
     /// 対応する InteractionRequest の ID
-    public let requestId: String
+    public let requestId: UUID
 
     /// 応答内容
     public let content: InteractionResponseContent
 
-    public init(requestId: String, content: InteractionResponseContent) {
+    public init(requestId: UUID, content: InteractionResponseContent) {
         self.requestId = requestId
         self.content = content
     }

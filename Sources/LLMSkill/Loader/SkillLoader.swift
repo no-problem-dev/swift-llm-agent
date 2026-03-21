@@ -157,6 +157,18 @@ public enum SkillLoader {
         // 呼び出し制御
         let isUserInvocable = frontmatter["user-invocable"] as? Bool ?? true
         let disableModel = frontmatter["disable-model-invocation"] as? Bool ?? false
+        let invocationMode: SkillInvocationMode
+        if isUserInvocable && !disableModel {
+            invocationMode = .both
+        } else if isUserInvocable && disableModel {
+            invocationMode = .userOnly
+        } else if !isUserInvocable && !disableModel {
+            invocationMode = .modelOnly
+        } else {
+            // Neither user nor model invocable
+            invocationMode = .none
+        }
+
         let argumentHint = frontmatter["argument-hint"] as? String
         let isEphemeral = frontmatter["ephemeral"] as? Bool ?? false
 
@@ -221,8 +233,7 @@ public enum SkillLoader {
             iconName: iconName,
             category: category,
             displayOrder: displayOrder,
-            isUserInvocable: isUserInvocable,
-            isModelInvocable: !disableModel,
+            invocationMode: invocationMode,
             argumentHint: argumentHint,
             metadata: metadata,
             modelTier: modelTier,

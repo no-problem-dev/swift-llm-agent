@@ -130,12 +130,12 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
                                 )
                                 return (index, ToolResponse(
                                     callId: call.id, name: call.name,
-                                    output: result.stringValue, isError: result.isError
+                                    content: .success( result.stringValue)
                                 ))
                             } catch {
                                 return (index, ToolResponse(
                                     callId: call.id, name: call.name,
-                                    output: "Error: \(error.localizedDescription)", isError: true
+                                    content: .failure( "Error: \(error.localizedDescription)")
                                 ))
                             }
                         }
@@ -254,6 +254,7 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
                     tools: tools,
                     toolChoice: tools.isEmpty ? nil : .auto,
                     responseSchema: responseSchema,
+                    thinkingMode: config.thinkingMode,
                     maxTokens: config.maxTokens
                 )
             } catch let error as LLMError {
@@ -269,6 +270,7 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
                     tools: ToolSet {},
                     toolChoice: nil,
                     responseSchema: Output.jsonSchema,
+                    thinkingMode: config.thinkingMode,
                     maxTokens: config.maxTokens
                 )
             } catch let error as LLMError {
@@ -286,15 +288,13 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
             return ToolResponse(
                 callId: call.id,
                 name: call.name,
-                output: result.stringValue,
-                isError: result.isError
+                content: .success( result.stringValue)
             )
         } catch {
             return ToolResponse(
                 callId: call.id,
                 name: call.name,
-                output: "Error: \(error.localizedDescription)",
-                isError: true
+                content: .failure( "Error: \(error.localizedDescription)")
             )
         }
     }

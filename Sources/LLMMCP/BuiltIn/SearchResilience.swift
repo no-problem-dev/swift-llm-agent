@@ -84,7 +84,12 @@ public actor RateLimiter {
 
         // Wait for token to become available
         let waitTime = (1.0 - tokens) / refillRate
-        try? await Task.sleep(for: .milliseconds(Int(waitTime * 1000)))
+        do {
+            try await Task.sleep(for: .milliseconds(Int(waitTime * 1000)))
+        } catch {
+            // Cancelled - allow caller to handle
+            return
+        }
         refillTokens()
         tokens = max(tokens - 1.0, 0)
     }
@@ -125,22 +130,23 @@ public actor CircuitBreaker {
         self.resetTimeout = resetTimeout
     }
 
-    /// リクエストの実行可否を確認
+    /// リクエストの実行可否を確認し、必要に応じて状態遷移
     ///
-    /// - Returns: 実行可能ならtrue
-    public func canExecute() -> Bool {
+    /// - closed: 常にtrueを返す
+    /// - halfOpen: 常にtrueを返す
+    /// - open: resetTimeout経過後にhalfOpenに遷移してtrueを返す、未経過ならfalseを返す
+    public func requestExecution() -> Bool {
         switch state {
         case .closed:
+            return true
+        case .halfOpen:
             return true
         case .open:
             guard let lastFailure = lastFailureTime else { return true }
             let elapsed = ContinuousClock.Instant.now - lastFailure
             let elapsedSeconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
-            if elapsedSeconds >= resetTimeout {
-                return true // Will transition to halfOpen
-            }
-            return false
-        case .halfOpen:
+            guard elapsedSeconds >= resetTimeout else { return false }
+            state = .halfOpen
             return true
         }
     }
@@ -157,15 +163,6 @@ public actor CircuitBreaker {
         lastFailureTime = .now
         if failureCount >= failureThreshold {
             state = .open
-        }
-    }
-
-    /// halfOpen状態へ遷移を試みる
-    ///
-    /// open状態でresetTimeout経過後に呼ばれる。
-    public func tryHalfOpen() {
-        if state == .open {
-            state = .halfOpen
         }
     }
 }
@@ -270,7 +267,7 @@ public actor SearchResultCache {
 /// レジリエンス機能を統合した検索プロバイダーラッパー
 ///
 /// キャッシュ → レート制限 → サーキットブレーカー → リトライの順で実行します。
-public final class ResilientSearchProvider: WebSearchProvider, @unchecked Sendable {
+public final class ResilientSearchProvider: WebSearchProvider, Sendable {
     private let provider: any WebSearchProvider
     private let rateLimiter: RateLimiter
     private let circuitBreaker: CircuitBreaker
@@ -299,14 +296,11 @@ public final class ResilientSearchProvider: WebSearchProvider, @unchecked Sendab
             return cached
         }
 
-        // 2. Check circuit breaker
-        let canExecute = await circuitBreaker.canExecute()
+        // 2. Request execution from circuit breaker (includes state transition)
+        let canExecute = await circuitBreaker.requestExecution()
         guard canExecute else {
             throw WebSearchError.circuitBreakerOpen
         }
-
-        // Transition to halfOpen if needed
-        await circuitBreaker.tryHalfOpen()
 
         // 3. Rate limiting + retry
         var lastError: Error?

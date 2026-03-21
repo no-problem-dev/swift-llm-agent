@@ -3,6 +3,64 @@ import LLMClient
 import LLMTool
 import LLMAgent
 
+// MARK: - SkillInvocationMode
+
+/// スキル呼び出しの許可モード
+public enum SkillInvocationMode: Sendable, Equatable, Codable {
+    /// ユーザーとLLM双方が呼び出し可能
+    case both
+    /// LLM のみが自律的に呼び出し可能
+    case modelOnly
+    /// ユーザーのみが呼び出し可能
+    case userOnly
+    /// 誰も呼び出し不可（無効化）
+    case none
+}
+
+// MARK: - SkillDisplayConfig
+
+/// スキルの表示設定
+public struct SkillDisplayConfig: Sendable {
+    public let displayName: String?
+    public let iconName: String
+    public let category: String?
+    public let displayOrder: Int
+
+    public init(
+        displayName: String? = nil,
+        iconName: String = "sparkles",
+        category: String? = nil,
+        displayOrder: Int = 999
+    ) {
+        self.displayName = displayName
+        self.iconName = iconName
+        self.category = category
+        self.displayOrder = displayOrder
+    }
+}
+
+// MARK: - SkillExecutionConfig
+
+/// スキルの実行設定
+public struct SkillExecutionConfig: Sendable {
+    public let executionMode: SkillExecutionMode
+    public let modelTier: ModelTier
+    public let configuration: AgentConfiguration
+    public let isEphemeral: Bool
+
+    public init(
+        executionMode: SkillExecutionMode = .inline,
+        modelTier: ModelTier = .standard,
+        configuration: AgentConfiguration = .default,
+        isEphemeral: Bool = false
+    ) {
+        self.executionMode = executionMode
+        self.modelTier = modelTier
+        self.configuration = configuration
+        self.isEphemeral = isEphemeral
+    }
+}
+
 // MARK: - AgentSkill
 
 /// Agent Skills 標準に準拠したスキルを定義するプロトコル
@@ -86,13 +144,8 @@ public protocol AgentSkill: Sendable {
     /// `optional`: デフォルト無効。ユーザーが明示的に有効化する。
     var availability: SkillAvailability { get }
 
-    /// ユーザーが直接呼び出し可能か（例: UI のコマンドリストに表示）
-    var isUserInvocable: Bool { get }
-
-    /// LLM が自律的に呼び出し可能か
-    ///
-    /// `false` の場合、ユーザーの明示的な指示がないと呼び出されない
-    var isModelInvocable: Bool { get }
+    /// スキル呼び出しの許可モード（ユーザー/LLM/両方）
+    var invocationMode: SkillInvocationMode { get }
 
     // MARK: - Optional (UI / Metadata)
 
@@ -132,16 +185,27 @@ extension AgentSkill {
     public var systemPrompt: SystemPrompt? { nil }
     public var configuration: AgentConfiguration { .default }
     public var availability: SkillAvailability { .required }
-    public var isUserInvocable: Bool { true }
+    public var invocationMode: SkillInvocationMode { .both }
     public var displayName: String { name }
     public var iconName: String { "sparkles" }
     public var category: String? { nil }
     public var displayOrder: Int { 999 }
-    public var isModelInvocable: Bool { true }
     public var argumentHint: String? { nil }
     public var metadata: SkillMetadata? { nil }
     public var modelTier: ModelTier { .standard }
     public var isEphemeral: Bool { false }
+
+    // MARK: - Derived Properties (from invocationMode)
+
+    /// ユーザーが直接呼び出し可能か
+    public var isUserInvocable: Bool {
+        invocationMode == .both || invocationMode == .userOnly
+    }
+
+    /// LLM が自律的に呼び出し可能か
+    public var isModelInvocable: Bool {
+        invocationMode == .both || invocationMode == .modelOnly
+    }
 }
 
 // MARK: - AgentSkillDefinition
@@ -175,8 +239,7 @@ public struct AgentSkillDefinition: AgentSkill {
     public let iconName: String
     public let category: String?
     public let displayOrder: Int
-    public let isUserInvocable: Bool
-    public let isModelInvocable: Bool
+    public let invocationMode: SkillInvocationMode
     public let argumentHint: String?
     public let metadata: SkillMetadata?
     public let modelTier: ModelTier
@@ -196,8 +259,7 @@ public struct AgentSkillDefinition: AgentSkill {
         iconName: String = "sparkles",
         category: String? = nil,
         displayOrder: Int = 999,
-        isUserInvocable: Bool = true,
-        isModelInvocable: Bool = true,
+        invocationMode: SkillInvocationMode = .both,
         argumentHint: String? = nil,
         metadata: SkillMetadata? = nil,
         modelTier: ModelTier = .standard,
@@ -216,8 +278,7 @@ public struct AgentSkillDefinition: AgentSkill {
         self.iconName = iconName
         self.category = category
         self.displayOrder = displayOrder
-        self.isUserInvocable = isUserInvocable
-        self.isModelInvocable = isModelInvocable
+        self.invocationMode = invocationMode
         self.argumentHint = argumentHint
         self.metadata = metadata
         self.modelTier = modelTier
@@ -250,8 +311,7 @@ public struct AgentSkillDefinition: AgentSkill {
         iconName: String = "sparkles",
         category: String? = nil,
         displayOrder: Int = 999,
-        isUserInvocable: Bool = true,
-        isModelInvocable: Bool = true,
+        invocationMode: SkillInvocationMode = .both,
         argumentHint: String? = nil,
         metadata: SkillMetadata? = nil,
         modelTier: ModelTier = .standard,
@@ -271,8 +331,7 @@ public struct AgentSkillDefinition: AgentSkill {
         self.iconName = iconName
         self.category = category
         self.displayOrder = displayOrder
-        self.isUserInvocable = isUserInvocable
-        self.isModelInvocable = isModelInvocable
+        self.invocationMode = invocationMode
         self.argumentHint = argumentHint
         self.metadata = metadata
         self.modelTier = modelTier

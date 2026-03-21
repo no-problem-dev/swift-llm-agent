@@ -133,6 +133,7 @@ package enum SubAgentRunner {
                         tools: tools,
                         toolChoice: tools.isEmpty ? nil : .auto,
                         responseSchema: nil,
+                        thinkingMode: configuration.thinkingMode,
                         maxTokens: configuration.maxTokens
                     )
                     }
@@ -169,15 +170,13 @@ package enum SubAgentRunner {
                             return ToolResponse(
                                 callId: call.id,
                                 name: call.name,
-                                output: toolResult.stringValue,
-                                isError: toolResult.isError
+                                content: .success( toolResult.stringValue)
                             )
                         } catch {
                             return ToolResponse(
                                 callId: call.id,
                                 name: call.name,
-                                output: "Error: \(error.localizedDescription)",
-                                isError: true
+                                content: .failure( "Error: \(error.localizedDescription)")
                             )
                         }
                         }
@@ -264,8 +263,7 @@ package enum SubAgentRunner {
             LLMMessage.MessageContent.toolResult(
                 toolCallId: result.callId,
                 name: result.name,
-                content: result.output,
-                isError: result.isError
+                content: result.content
             )
         }
         messages.append(LLMMessage(role: .user, contents: contents))

@@ -21,11 +21,11 @@ public struct PostToChannelTool: Tool {
     )
 
     private let channel: Channel<String>
-    private let sender: String
+    private let sender: ParticipantID
 
     public init(channel: Channel<String>, sender: String = "orchestrator") {
         self.channel = channel
-        self.sender = sender
+        self.sender = ParticipantID(rawValue: sender)
     }
 
     public func execute(with argumentsData: Data) async throws -> ToolResult {

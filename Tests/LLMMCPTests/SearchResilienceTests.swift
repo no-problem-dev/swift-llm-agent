@@ -90,7 +90,7 @@ struct CircuitBreakerTests {
         await cb.recordFailure()
         let state = await cb.state
         #expect(state == .closed)
-        let canExecute = await cb.canExecute()
+        let canExecute = await cb.requestExecution()
         #expect(canExecute == true)
     }
 
@@ -102,7 +102,7 @@ struct CircuitBreakerTests {
         await cb.recordFailure()
         let state = await cb.state
         #expect(state == .open)
-        let canExecute = await cb.canExecute()
+        let canExecute = await cb.requestExecution()
         #expect(canExecute == false)
     }
 
@@ -126,9 +126,8 @@ struct CircuitBreakerTests {
         // Wait for reset timeout
         try? await Task.sleep(for: .milliseconds(150))
 
-        let canExecute = await cb.canExecute()
+        let canExecute = await cb.requestExecution()
         #expect(canExecute == true)
-        await cb.tryHalfOpen()
         let stateAfterTimeout = await cb.state
         #expect(stateAfterTimeout == .halfOpen)
     }

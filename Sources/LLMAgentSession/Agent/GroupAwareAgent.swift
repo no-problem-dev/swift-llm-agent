@@ -114,7 +114,7 @@ extension GroupAwareAgent {
     public func handleOriginatedMessage(_ message: OriginatedMessage<String>) async {
         await handleGroupMessage(
             message.message,
-            from: message.origin.channelId,
+            from: message.origin.channelId.rawValue,
             channelName: message.origin.channelName
         )
     }

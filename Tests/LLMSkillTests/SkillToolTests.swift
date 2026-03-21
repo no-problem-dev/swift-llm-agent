@@ -70,13 +70,13 @@ import LLMAgent
             name: "visible",
             description: "Visible to model",
             instructions: "...",
-            isModelInvocable: true
+            invocationMode: .both
         )
         AgentSkillDefinition(
             name: "hidden",
             description: "Hidden from model",
             instructions: "...",
-            isModelInvocable: false
+            invocationMode: .userOnly
         )
     }
 
@@ -374,6 +374,7 @@ private struct MockAgentClient: AgentCapableClient {
         tools: ToolSet,
         toolChoice: ToolChoice?,
         responseSchema: JSONSchema?,
+        thinkingMode: ThinkingMode,
         maxTokens: Int?
     ) async throws -> LLMResponse {
         LLMResponse(
@@ -389,7 +390,7 @@ private struct MockAgentClient: AgentCapableClient {
         model: String,
         tools: ToolSet,
         toolChoice: ToolChoice?,
-        systemPrompt: String?,
+        systemPrompt: SystemPrompt?,
         temperature: Double?,
         maxTokens: Int?
     ) async throws -> ToolCallResponse {

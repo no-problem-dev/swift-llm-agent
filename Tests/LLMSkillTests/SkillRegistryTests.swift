@@ -118,13 +118,13 @@ import LLMAgent
             name: "auto",
             description: "Auto invocable",
             instructions: "...",
-            isModelInvocable: true
+            invocationMode: .both
         )
         AgentSkillDefinition(
             name: "manual-only",
             description: "Manual only",
             instructions: "...",
-            isModelInvocable: false
+            invocationMode: .userOnly
         )
     }
 
@@ -139,13 +139,13 @@ import LLMAgent
             name: "user-visible",
             description: "Visible to user",
             instructions: "...",
-            isUserInvocable: true
+            invocationMode: .both
         )
         AgentSkillDefinition(
             name: "hidden",
             description: "Hidden from user",
             instructions: "...",
-            isUserInvocable: false
+            invocationMode: .modelOnly
         )
     }
 
