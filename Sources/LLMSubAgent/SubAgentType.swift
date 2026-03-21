@@ -83,6 +83,8 @@ extension SubAgentType {
 public struct SubAgentTypeDefinition: SubAgentType {
     public let name: String
     public let description: String
+    public let displayName: String?
+    public let iconName: String?
     public let tools: ToolSet
     public let allowedTools: [String]?
     public let systemPrompt: SystemPrompt?
@@ -94,6 +96,8 @@ public struct SubAgentTypeDefinition: SubAgentType {
     /// - Parameters:
     ///   - name: カタログ内の識別子
     ///   - description: LLM に見せる能力説明
+    ///   - displayName: UI 表示用の名前（省略時は name を使用）
+    ///   - iconName: SF Symbols アイコン名（省略時はデフォルトアイコン）
     ///   - tools: 使用可能ツール
     ///   - allowedTools: 許可するツール名のリスト（toolPool からフィルタ用）
     ///   - systemPrompt: システムプロンプト（オプション）
@@ -102,6 +106,8 @@ public struct SubAgentTypeDefinition: SubAgentType {
     public init(
         name: String,
         description: String,
+        displayName: String? = nil,
+        iconName: String? = nil,
         tools: ToolSet = ToolSet {},
         allowedTools: [String]? = nil,
         systemPrompt: SystemPrompt? = nil,
@@ -110,6 +116,8 @@ public struct SubAgentTypeDefinition: SubAgentType {
     ) {
         self.name = name
         self.description = description
+        self.displayName = displayName
+        self.iconName = iconName
         self.tools = tools
         self.allowedTools = allowedTools
         self.systemPrompt = systemPrompt
@@ -131,6 +139,8 @@ public struct SubAgentTypeDefinition: SubAgentType {
     public init(
         name: String,
         description: String,
+        displayName: String? = nil,
+        iconName: String? = nil,
         allowedTools: [String]? = nil,
         systemPrompt: SystemPrompt? = nil,
         configuration: AgentConfiguration = .default,
@@ -139,6 +149,8 @@ public struct SubAgentTypeDefinition: SubAgentType {
     ) {
         self.name = name
         self.description = description
+        self.displayName = displayName
+        self.iconName = iconName
         self.tools = ToolSet(tools)
         self.allowedTools = allowedTools
         self.systemPrompt = systemPrompt

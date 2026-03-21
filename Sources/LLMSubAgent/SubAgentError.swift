@@ -19,6 +19,9 @@ public enum SubAgentError: Error, Sendable {
 
     /// 無効な引数
     case invalidArguments(String)
+
+    /// 指定されたエージェントタイプが見つからない
+    case agentTypeNotFound(String)
 }
 
 // MARK: - LocalizedError
@@ -36,6 +39,8 @@ extension SubAgentError: LocalizedError {
             return "LLM error in sub-agent: \(error.localizedDescription)"
         case .invalidArguments(let message):
             return "Invalid arguments for sub-agent: \(message)"
+        case .agentTypeNotFound(let agentType):
+            return "Sub-agent type not found: \"\(agentType)\""
         }
     }
 }

@@ -29,6 +29,9 @@ public enum SessionPhaseEvent: Sendable {
     /// 一時停止
     case paused
 
+    /// キャンセル済み
+    case cancelled
+
     /// 完了
     case completed(result: StructuredResult)
 

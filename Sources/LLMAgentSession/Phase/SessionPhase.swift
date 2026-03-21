@@ -25,11 +25,13 @@ public enum SessionPhase<Output: StructuredProtocol>: Sendable {
     /// - Parameter step: 現在実行中のステップ
     case running(step: AgentStep)
 
-    /// 一時停止 / キャンセル済み（resume で再開可能）
-    ///
-    /// `SessionStatus.cancelled` 後にストリームに yield される。
-    /// 消費側は `SessionStatus` を参照して cancel か pause かを区別する。
+    /// 一時停止（resume で再開可能）
     case paused
+
+    /// キャンセル済み
+    ///
+    /// `Task` がキャンセルされた場合にストリームに yield される。
+    case cancelled
 
     /// 正常完了（構造化出力）
     ///
@@ -53,16 +55,6 @@ extension SessionPhase: Equatable where Output: Equatable {}
 // MARK: - Convenience Properties
 
 extension SessionPhase {
-    /// セッションが実行中かどうか
-    public var isActive: Bool {
-        switch self {
-        case .running:
-            return true
-        default:
-            return false
-        }
-    }
-
     /// 実行中かどうか（`running` の場合のみ）
     public var isRunning: Bool {
         if case .running = self {
@@ -115,6 +107,8 @@ extension SessionPhase: CustomStringConvertible {
             return "running(\(step))"
         case .paused:
             return "paused"
+        case .cancelled:
+            return "cancelled"
         case .completed(let output):
             let outputStr = String(describing: output)
             let truncated = outputStr.prefix(30)

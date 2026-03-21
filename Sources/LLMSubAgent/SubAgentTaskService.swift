@@ -171,7 +171,7 @@ public actor SubAgentTaskService<Client: AgentCapableClient>: SubAgentTaskContro
             model: model,
             tools: tools,
             systemPrompt: systemPrompt,
-            configuration: applyMaxStepsOverride(maxStepsOverride, to: configuration.forBackground),
+            configuration: SubAgentToolHelpers.applyMaxStepsOverride(maxStepsOverride, to: configuration.forBackground),
             timeout: timeout,
             maxAttempts: max(1, maxAttempts)
         )
@@ -316,7 +316,7 @@ public actor SubAgentTaskService<Client: AgentCapableClient>: SubAgentTaskContro
             entry.definition.timeout = timeoutOverride
         }
         if let maxStepsOverride {
-            entry.definition.configuration = applyMaxStepsOverride(maxStepsOverride, to: entry.definition.configuration)
+            entry.definition.configuration = SubAgentToolHelpers.applyMaxStepsOverride(maxStepsOverride, to: entry.definition.configuration)
         }
 
         if let additionalInstructions, !additionalInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -451,22 +451,4 @@ public actor SubAgentTaskService<Client: AgentCapableClient>: SubAgentTaskContro
         await eventHandler?(.failed(taskId: id, error: error))
     }
 
-    private func applyMaxStepsOverride(
-        _ maxSteps: Int?,
-        to configuration: AgentConfiguration
-    ) -> AgentConfiguration {
-        guard let maxSteps, maxSteps > 0 else { return configuration }
-        return AgentConfiguration(
-            maxSteps: maxSteps,
-            softMaxSteps: max(1, maxSteps - 2),
-            autoExecuteTools: configuration.autoExecuteTools,
-            maxDuplicateToolCalls: configuration.maxDuplicateToolCalls,
-            maxToolCallsPerTool: configuration.maxToolCallsPerTool,
-            maxInteractiveCalls: configuration.maxInteractiveCalls,
-            parallelToolExecution: configuration.parallelToolExecution,
-            thinkingMode: configuration.thinkingMode,
-            skipFinalOutput: configuration.skipFinalOutput,
-            maxTokens: configuration.maxTokens
-        )
-    }
 }

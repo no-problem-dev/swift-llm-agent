@@ -17,7 +17,7 @@ private struct TestOutput: StructuredProtocol, Equatable {
 @Test func testSessionStatusProperties() {
     let status = SessionStatus.idle
     #expect(status.canRun == true)
-    #expect(status.isActive == false)
+    #expect(status.isEngaged == false)
     #expect(status.canCancel == false)
 }
 
@@ -25,7 +25,7 @@ private struct TestOutput: StructuredProtocol, Equatable {
 
 @Test func testSessionStatusRunning() {
     let status = SessionStatus.running
-    #expect(status.isActive == true)
+    #expect(status.isEngaged == true)
     #expect(status.isRunning == true)
     #expect(status.canCancel == true)
     #expect(status.canRun == false)
@@ -35,18 +35,18 @@ private struct TestOutput: StructuredProtocol, Equatable {
 @Test func testSessionStatusIdleProperties() {
     let status = SessionStatus.idle
     #expect(status.canRun == true)
-    #expect(status.canResume == true)
+    #expect(status.canResume == false)
     #expect(status.canCancel == false)
-    #expect(status.isActive == false)
+    #expect(status.isEngaged == false)
     #expect(status.error == nil)
 }
 
 @Test func testSessionStatusFailed() {
-    let status = SessionStatus.failed(error: "test error")
+    let status = SessionStatus.failed(.unexpected("test error"))
     #expect(status.canResume == true)
     #expect(status.canClear == true)
-    #expect(status.canRun == false)
-    #expect(status.error == "test error")
+    #expect(status.canRun == true)
+    #expect(status.error == .unexpected("test error"))
 }
 
 @Test func testSessionStatusDescription() {

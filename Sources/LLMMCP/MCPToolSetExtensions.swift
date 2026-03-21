@@ -22,9 +22,6 @@ public struct MCPServerWrapper: Sendable {
     /// 内部のMCPサーバー
     let server: any MCPServerProtocol
 
-    /// キャッシュされたツール（遅延取得）
-    private var cachedTools: [MCPTool]?
-
     public init(_ server: any MCPServerProtocol) {
         self.server = server
     }

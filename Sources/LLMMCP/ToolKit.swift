@@ -124,9 +124,6 @@ public struct BuiltInTool: Tool, Sendable {
     public var capabilities: MCPToolCapabilities {
         let isReadOnly = annotations.readOnlyHint ?? false
         let isDangerous = isReadOnly ? false : (annotations.destructiveHint ?? true)
-        return MCPToolCapabilities(
-            isReadOnly: isReadOnly,
-            isDangerous: isDangerous
-        )
+        return MCPToolCapabilities.from(isReadOnly: isReadOnly, isDangerous: isDangerous)
     }
 }

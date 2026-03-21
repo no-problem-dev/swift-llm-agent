@@ -239,27 +239,36 @@ public struct MCPToolSelection: Sendable {
 
 // MARK: - MCPToolCapabilities
 
-/// MCPツールの能力フラグ
-public struct MCPToolCapabilities: Sendable {
+/// MCPツールの操作能力を表す排他的な分類
+///
+/// Bool の組み合わせで表現していた `isReadOnly` / `isDangerous` を
+/// 論理的に矛盾のない排他的な3状態に整理したものです。
+public enum MCPToolCapabilities: Sendable, Equatable {
+    /// 読み取りのみ。安全な操作
+    case readOnly
+
+    /// 書き込み可能だが安全な操作
+    case writeSafe
+
+    /// 書き込み可能かつ破壊的な操作
+    case writeDestructive
+
     /// 読み取り専用かどうか
-    public let isReadOnly: Bool
+    public var isReadOnly: Bool { self == .readOnly }
 
-    /// 危険な操作かどうか
-    public let isDangerous: Bool
+    /// 破壊的な操作かどうか
+    public var isDangerous: Bool { self == .writeDestructive }
 
-    public init(isReadOnly: Bool = false, isDangerous: Bool = false) {
-        self.isReadOnly = isReadOnly
-        self.isDangerous = isDangerous
+    /// Bool ペアからの変換ファクトリ
+    ///
+    /// - Parameters:
+    ///   - isReadOnly: 読み取り専用の場合 true
+    ///   - isDangerous: 破壊的操作の場合 true（`isReadOnly` が true の場合は無視）
+    public static func from(isReadOnly: Bool, isDangerous: Bool) -> MCPToolCapabilities {
+        if isReadOnly { return .readOnly }
+        if isDangerous { return .writeDestructive }
+        return .writeSafe
     }
-
-    /// デフォルト（読み取り・書き込み可能、安全）
-    public static let `default` = MCPToolCapabilities()
-
-    /// 読み取り専用
-    public static let readOnly = MCPToolCapabilities(isReadOnly: true)
-
-    /// 危険な操作
-    public static let dangerous = MCPToolCapabilities(isDangerous: true)
 }
 
 // MARK: - MCPServerProtocol Default Extensions

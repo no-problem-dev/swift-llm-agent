@@ -248,6 +248,8 @@ public actor ChatSession<Client: AgentCapableClient>: ChatSessionProtocol
             mapStep(step)
         case .paused:
             .paused
+        case .cancelled:
+            .cancelled
         case .completed(let output):
             .completed(result: renderOutput(output))
         case .completedText(let text):

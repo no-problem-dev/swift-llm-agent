@@ -9,6 +9,6 @@ import LLMTool
 
 @Test func testMCPToolSelection() {
     let selection = MCPToolSelection.all
-    let capabilities = MCPToolCapabilities.default
+    let capabilities = MCPToolCapabilities.writeSafe
     #expect(selection.includes(toolName: "test", capabilities: capabilities) == true)
 }

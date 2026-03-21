@@ -152,7 +152,7 @@ internal actor SDKClientAdapter {
         let inputSchema = convertValueToJSONSchema(sdkTool.inputSchema)
 
         // annotationsからcapabilitiesを推測
-        let capabilities = MCPToolCapabilities(
+        let capabilities = MCPToolCapabilities.from(
             isReadOnly: sdkTool.annotations.readOnlyHint ?? false,
             isDangerous: sdkTool.annotations.destructiveHint ?? false
         )

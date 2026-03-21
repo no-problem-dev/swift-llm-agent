@@ -64,8 +64,8 @@ public enum SessionStatus: Sendable, Equatable {
 // MARK: - Convenience Properties
 
 extension SessionStatus {
-    /// セッションがアクティブか（idle / completed / cancelled 以外）
-    public var isActive: Bool {
+    /// セッションが関与中か（.running / .interaction / .authorization / .paused）
+    public var isEngaged: Bool {
         switch self {
         case .running, .interaction, .authorization, .paused: true
         default: false
@@ -110,12 +110,14 @@ extension SessionStatus {
 
     /// `run()` / `sendWithPrefill()` が呼び出し可能かどうか
     ///
-    /// 新しいターンを開始できる状態かを判定する。
-    /// アクティブに実行中（`.running`）の場合のみ不可。
+    /// 新しいターンを開始できる終端状態かを判定する。
+    /// engaged 状態（`.running` / `.interaction` / `.authorization` / `.paused`）では不可。
     public var canRun: Bool {
         switch self {
-        case .running: return false
-        default: return true
+        case .idle, .completed, .cancelled, .failed:
+            return true
+        case .running, .interaction, .authorization, .paused:
+            return false
         }
     }
 
@@ -159,6 +161,43 @@ extension SessionStatus {
 
     /// デバッグ用ラベル
     public var debugLabel: String { description }
+}
+
+// MARK: - Persistence
+
+extension SessionStatus {
+    /// 永続化用の文字列表現
+    public var persistableName: String {
+        switch self {
+        case .idle: return "idle"
+        case .running: return "running"
+        case .interaction: return "interaction"
+        case .authorization: return "authorization"
+        case .paused: return "paused"
+        case .cancelled: return "cancelled"
+        case .completed: return "completed"
+        case .failed: return "failed"
+        }
+    }
+
+    /// 永続化文字列からステータスを復元する
+    ///
+    /// - Note: `running` / `interaction` / `authorization` で保存されたセッションは
+    ///   中断扱いのため `.paused` として復元する。
+    ///   `failed` は `.failed(.unexpected("Restored from persisted state"))` として復元する。
+    public static func from(persistableName: String) -> SessionStatus? {
+        switch persistableName {
+        case "idle": return .idle
+        case "running": return .paused
+        case "interaction": return .paused
+        case "authorization": return .paused
+        case "paused": return .paused
+        case "cancelled": return .cancelled
+        case "completed": return .completed
+        case "failed": return .failed(.unexpected("Restored from persisted state"))
+        default: return nil
+        }
+    }
 }
 
 // MARK: - CustomStringConvertible

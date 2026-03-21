@@ -45,7 +45,7 @@ public final class MCPTool: Tool, @unchecked Sendable {
         name: String,
         description: String,
         inputSchema: JSONSchema,
-        capabilities: MCPToolCapabilities = .default,
+        capabilities: MCPToolCapabilities = .writeSafe,
         executeHandler: @escaping @Sendable (Data) async throws -> ToolResult
     ) {
         self.toolName = name
@@ -123,7 +123,7 @@ extension MCPTool {
         let dangerousKeywords = ["delete", "remove", "drop", "destroy", "force", "admin", "sudo", "root"]
         let isDangerous = dangerousKeywords.contains { lowercaseName.contains($0) || lowercaseDesc.contains($0) }
 
-        return MCPToolCapabilities(isReadOnly: isReadOnly, isDangerous: isDangerous)
+        return MCPToolCapabilities.from(isReadOnly: isReadOnly, isDangerous: isDangerous)
     }
 
     /// JSON辞書からJSONSchemaを構築

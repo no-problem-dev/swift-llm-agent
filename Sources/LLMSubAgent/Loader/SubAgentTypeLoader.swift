@@ -118,6 +118,10 @@ public enum SubAgentTypeLoader {
             throw SubAgentLoaderError.missingAllowedTools(name)
         }
 
+        // UI 表示用フィールド（オプション）
+        let displayName = frontmatter["display-name"] as? String
+        let iconName = frontmatter["icon"] as? String
+
         // モデルティア
         let modelTier: ModelTier
         if let tierValue = frontmatter["model-tier"] as? String {
@@ -154,6 +158,8 @@ public enum SubAgentTypeLoader {
         return SubAgentTypeDefinition(
             name: name,
             description: description,
+            displayName: displayName,
+            iconName: iconName,
             allowedTools: allowedTools,
             systemPrompt: systemPrompt,
             configuration: configuration,

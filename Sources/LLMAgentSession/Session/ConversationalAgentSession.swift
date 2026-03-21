@@ -37,7 +37,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
     // MARK: - Protocol Conformance: Properties
 
     public var running: Bool {
-        status.isActive
+        status.isEngaged
     }
 
     public var turnCount: Int {
@@ -579,7 +579,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
 
         } catch is CancellationError {
             status = .cancelled
-            continuation.yield(.paused)
+            continuation.yield(.cancelled)
             continuation.finish()
         } catch let error as ConversationalAgentError {
             let sessionError = SessionError(from: error)
