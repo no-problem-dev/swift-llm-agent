@@ -20,7 +20,7 @@ let package = Package(
         .package(path: "../swift-agent-communication"),
         .package(path: "../swift-llm-client"),
         .package(path: "../swift-a2a"),
-        .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.10.0"),
+        .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", branch: "v1.0.0-rc"),
         .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.6.0"),
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.4.0"),
     ],

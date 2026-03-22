@@ -296,14 +296,14 @@ internal actor SDKClientAdapter {
 
         for item in content {
             switch item {
-            case .text(let text):
+            case .text(let text, _, _):
                 textParts.append(text)
 
-            case .image(let data, let mimeType, _):
+            case .image(let data, let mimeType, _, _):
                 // 画像はBase64文字列として含める（将来的にToolResultに画像サポートを追加可能）
                 textParts.append("[Image: \(mimeType), \(data.prefix(50))...]")
 
-            case .audio(let data, let mimeType):
+            case .audio(let data, let mimeType, _, _):
                 // オーディオはテキストとして表現
                 textParts.append("[Audio: \(mimeType), \(data.count) bytes base64]")
 
