@@ -15,7 +15,10 @@ public struct WaitTaskTool: Tool {
     public var toolName: String { "wait_task" }
 
     public var toolDescription: String {
-        "Waits for a background task to change state or complete. Use this after delegate_task or use_skill started a background task."
+        "Waits for a background task to change state or complete. " +
+        "Blocks for up to timeout_seconds (default: 30s). " +
+        "Call this ONCE per task — it will wait and return the result when ready. " +
+        "Do NOT call repeatedly in a loop."
     }
 
     public var inputSchema: JSONSchema {
@@ -25,7 +28,7 @@ public struct WaitTaskTool: Tool {
                     description: "The ID of the task to wait for."
                 ),
                 "timeout_seconds": .integer(
-                    description: "How long to wait before returning the current state (0-300)."
+                    description: "How long to wait in seconds (default: 30, max: 300). The tool blocks until the task completes or timeout is reached."
                 ),
             ],
             required: ["task_id"]
@@ -38,7 +41,7 @@ public struct WaitTaskTool: Tool {
             return .error("Invalid task_id format: \"\(args.taskId)\"")
         }
 
-        let timeout = max(0, min(args.timeoutSeconds ?? 0, 300))
+        let timeout = max(0, min(args.timeoutSeconds ?? 30, 300))
         let info: SubAgentTaskInfo?
         if timeout == 0 {
             info = await controller.getTask(id: taskId)
