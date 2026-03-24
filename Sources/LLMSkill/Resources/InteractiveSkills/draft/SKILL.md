@@ -7,7 +7,7 @@ category: communication
 display-order: 15
 context: inline
 disable-model-invocation: true
-version: 3.0.0
+version: 3.2.0
 author: InteractiveSkillKit
 tags:
   - writing
@@ -21,8 +21,9 @@ tags:
 
 ## 重要なルール
 - ユーザーへの質問には ask_user / ask_selection / ask_confirmation を使う。デバイス入力には専用ツール（capture_photo, request_voice_input 等）を使う。テキスト出力として質問しない
+- **ツールループ中の中間テキスト出力はユーザーに見えない。** ユーザーに情報を見せるには `post_to_channel` を使うか、インタラクティブツールの question パラメータに全内容を含める
+- **`ask_selection` や `ask_user` の question には、それまでに取得した全データの要約を含める。** ユーザーはこの question テキストでしか情報を受け取れない
 - Web 調査が必要なら `delegate_task` で `researcher` に委譲する
-- `delegate_task` の結果はユーザーに見えないため、自分の言葉で整理して description に含める
 - 常に日本語で応答する（英文作成を求められた場合は英語で）
 
 ## ワークフロー
@@ -39,17 +40,27 @@ tags:
 - 対象読者（誰に向けて書くか）
 - 伝えたいこと（主旨・ゴール）
 
+`ask_user` の question には、Step 1 で選ばれた文章種類を含める（例: 「メールを作成します。誰に向けて書きますか？」）。
+
 **依頼・引継ぎの場合**は `request_form_input` で一度に聞く:
 - 相手の名前・関係性
 - 期限
 - 期待するアウトプット
 
-必要に応じて `delegate_task(agent_type: "researcher", ...)` で関連情報を確認する。
+必要に応じて `delegate_task(agent_type: "researcher", ...)` で関連情報を確認し、取得データを次の `ask_selection` や `ask_user` の question に含めて提示する。
 
 ### Step 3: ドラフト生成
-文体・目的・読者に最適化したドラフトを生成し、テキスト出力で提示する。
+文体・目的・読者に最適化したドラフトを生成し、**`ask_selection` の question パラメータにドラフト全文を含めて** 提示する。
 
-その後 `ask_selection` で次のアクションを確認:
+具体例:
+```
+ask_selection(
+  question: "○○部長宛のメールを作成しました。\n\n---\n件名: プロジェクトA 進捗報告（3/24）\n\n○○部長\n\nお疲れ様です。プロジェクトAの進捗をご報告します。\n\n■ 今週の進捗\n・設計レビュー完了\n・APIの実装を開始\n\n■ 来週の予定\n・結合テスト実施\n\nご確認よろしくお願いいたします。\n---\n\n次はどうしますか？",
+  options: [...]
+)
+```
+
+選択肢:
 - 「トーンを変える」→ `ask_selection` で（カジュアル/フォーマル/柔らかく/簡潔に）
 - 「長さを変える」→ `ask_selection` で（短く/長く/箇条書きに）
 - 「別バージョンを作る」→ 異なるアプローチで再作成
@@ -60,4 +71,4 @@ tags:
 `compose_mail` を使用してメール送信画面を開く。
 
 ## 完了時の最終出力
-完成した文章の最終版を最後のテキスト出力として残す。
+完成した文章の最終版を最後のテキスト出力として残す。この最終テキストだけがチャット画面に表示される。

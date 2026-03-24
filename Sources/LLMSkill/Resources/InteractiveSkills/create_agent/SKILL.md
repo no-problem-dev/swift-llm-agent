@@ -9,7 +9,7 @@ context: inline
 availability: optional
 disable-model-invocation: true
 ephemeral: true
-version: 1.0.0
+version: 3.2.0
 author: InteractiveSkillKit
 tags:
   - creator
@@ -23,6 +23,8 @@ tags:
 
 ## 重要なルール
 - ユーザーへの質問には `ask_user` / `ask_selection` / `ask_confirmation` を使う。テキスト出力として質問しない
+- **ツールループ中の中間テキスト出力はユーザーに見えない。** ユーザーに情報を見せるには `post_to_channel` を使うか、インタラクティブツールの question パラメータに全内容を含める
+- **`ask_selection` や `ask_user` の question には、それまでに取得した全データの要約を含める。** ユーザーはこの question テキストでしか情報を受け取れない
 - 常に日本語で応答する
 - エージェント名（name）は snake_case で生成する
 - instructions はエージェントの役割・振る舞い・制約を明確に記述する
@@ -54,19 +56,30 @@ tags:
 - `allowed_tools`: 必要なツール名のリスト
 - `icon_name`: 適切な SF Symbols アイコン名
 
+### Step 2.5: 生成結果の提示とモデルティア選択
+自動生成した設定内容を **`ask_selection` の question パラメータに含めて** 提示し、モデルティアを選択してもらう。
+
+具体例:
+```
+ask_selection(
+  question: "エージェント設定を自動生成しました。\n\n【識別名】web_researcher\n【表示名】Webリサーチャー\n【説明】Searches the web and summarizes findings on any topic\n【ツール】web_search, web_fetch, text_analysis\n【アイコン】magnifyingglass.circle\n\nモデルティアを選んでください。\nWebリサーチは標準的なタスクなので standard が推奨です。",
+  options: [...]
+)
+```
+
 ### Step 3: モデルティア選択
-`ask_selection` でモデルティアを選択:
-- question: "エージェントのモデルティアを選んでください。\n\n複雑なタスクには powerful、日常的なタスクには standard、軽量なタスクには light が適しています。"
+Step 2.5 で選択されなかった場合、`ask_selection` でモデルティアを選択:
+- question に生成したエージェント設定の概要を含め、タスク内容を踏まえた推奨を添える
 - options: 「light（軽量・高速）」「standard（標準）(推奨)」「powerful（高性能）」
 
 ### Step 4: 最大ステップ数の確認
 `ask_selection` で最大ステップ数を選択:
-- question: "エージェントの最大ステップ数を選んでください。\n\n1ステップ = 1回のツール呼び出しまたは応答です。"
+- question: "「{display_name}」エージェントの最大ステップ数を選んでください。\n\n使用ツール: {allowed_tools の一覧}\n1ステップ = 1回のツール呼び出しまたは応答です。"
 - options: 「6（軽いタスク向け）」「10（標準）(推奨)」「15（複雑なタスク向け）」「20（高度なタスク向け）」
 
 ### Step 5: スコープ選択
 `ask_selection` でスコープを選択:
-- question: "エージェントの保存先を選んでください。"
+- question: "「{display_name}」エージェントの保存先を選んでください。"
 - options: 「グローバル（全プロジェクトで使用可能）」「プロジェクト（現在のプロジェクトのみ）」
 
 ### Step 6: 確認
@@ -85,5 +98,5 @@ tags:
 確認が得られたら `save_agent` ツールを呼び出す。
 
 ### Step 8: 完了メッセージ
-作成完了を伝える最終メッセージを出力する。
-`delegate_task` でこのエージェントを呼び出せることを伝える。
+保存結果をテキスト出力で提示し、作成完了を伝える最終メッセージを出力する。
+`delegate_task` でこのエージェントを呼び出せることを伝える。この最終テキストだけがチャット画面に表示される。

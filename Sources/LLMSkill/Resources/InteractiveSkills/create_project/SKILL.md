@@ -9,7 +9,7 @@ context: inline
 availability: optional
 disable-model-invocation: true
 ephemeral: true
-version: 1.0.0
+version: 3.2.0
 author: InteractiveSkillKit
 tags:
   - creator
@@ -22,6 +22,8 @@ tags:
 
 ## 重要なルール
 - ユーザーへの質問には `ask_user` / `ask_selection` / `ask_confirmation` を使う。テキスト出力として質問しない
+- **ツールループ中の中間テキスト出力はユーザーに見えない。** ユーザーに情報を見せるには `post_to_channel` を使うか、インタラクティブツールの question パラメータに全内容を含める
+- **`ask_selection` や `ask_user` の question には、それまでに取得した全データの要約を含める。** ユーザーはこの question テキストでしか情報を受け取れない
 - 常に日本語で応答する
 - プロジェクト名は簡潔で分かりやすいものを提案する
 
@@ -39,7 +41,7 @@ tags:
 
 ### Step 3: 指示テキストの収集（指示ありの場合）
 「指示を追加する」が選択された場合、`ask_user` で指示テキストを収集する:
-- question: "プロジェクトの指示を入力してください。"
+- question: "プロジェクト「{name}」の指示を入力してください。\n\nここで設定した指示は、このプロジェクトの全セッションでAIが自動的に従います。"
 - multiline: true
 - placeholder: "AIアシスタントがこのプロジェクトのセッションで常に従う指示です。\n\n例:\n- 「常にTypeScriptで回答してください」\n- 「文章は敬体（です・ます調）で書いてください」\n- 「コードレビュー時はセキュリティ観点を重視してください」"
 
@@ -56,4 +58,4 @@ tags:
 - instructions: 指示テキスト（なしの場合は省略）
 
 ### Step 6: 完了メッセージ
-作成完了を伝える最終メッセージを出力する。
+保存結果をテキスト出力で提示し、作成完了を伝える最終メッセージを出力する。プロジェクトの使い方のヒントも添える。この最終テキストだけがチャット画面に表示される。

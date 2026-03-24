@@ -7,7 +7,7 @@ category: quick
 display-order: 3
 context: inline
 disable-model-invocation: true
-version: 3.0.0
+version: 3.2.0
 author: InteractiveSkillKit
 tags:
   - reading
@@ -21,9 +21,10 @@ tags:
 
 ## 重要なルール
 - ユーザーへの質問には ask_user / ask_selection / ask_confirmation を使う。デバイス入力には専用ツール（capture_photo, request_voice_input 等）を使う。テキスト出力として質問しない
+- **ツールループ中の中間テキスト出力はユーザーに見えない。** ユーザーに情報を見せるには `post_to_channel` を使うか、インタラクティブツールの question パラメータに全内容を含める
+- **`ask_selection` や `ask_user` の question には、それまでに取得した全データの要約を含める。** ユーザーはこの question テキストでしか情報を受け取れない
 - Web 調査は `delegate_task` で `researcher` に委譲する
-- `delegate_task` の結果はユーザーに見えないため、自分の言葉で整理して description に含める
-- 画像を取得したら `list_media` → `read_media` で内容を分析する
+- 画像を取得したら `list_media` → `read_media` で内容を分析し、分析結果を次のインタラクティブツールの question に含めて提示する
 - 常に日本語で応答する
 
 ## ワークフロー
@@ -42,18 +43,21 @@ tags:
 - 紙スキャン → `scan_document` → `list_media` → `read_media` でテキスト抽出
 - テキスト → `ask_user` でテキスト入力（multiline: true）
 
-### Step 3: 要約の生成
-以下の構造で要約を生成し、テキスト出力で提示する:
+### Step 3: 要約の生成と追加アクション
+取得した内容を要約し、**`ask_selection` の question パラメータに要約全文を含めて** 提示する。
 
-1. **3行要約** — 全体を3行で
-2. **要点3つ** — 最も重要なポイント
-3. **読む価値** — ★1〜5の判定と理由（対象読者にとっての価値）
+具体例:
+```
+ask_selection(
+  question: "📄 記事の要約が完了しました。\n\n【3行要約】\n1. Apple が Swift 6.1 をリリースし、型推論が大幅に改善された\n2. strict concurrency の段階的移行をサポートする新フラグが追加\n3. Package.swift でのマクロ依存解決が高速化\n\n【要点3つ】\n・型推論の改善で Result Builder のボイラープレートが削減\n・@retroactive 属性で既存コードの段階移行が容易に\n・SPM のビルド時間が平均15%短縮\n\n【読む価値】★★★★☆\nSwift 開発者は必読。特に Concurrency 移行中のプロジェクトに有用。\n\n次はどうしますか？",
+  options: [...]
+)
+```
 
-### Step 4: 追加アクション
-`ask_selection` で次のアクションを提案する:
+選択肢:
 - 「深掘りする」→ 特定のセクションや論点について詳細に分析
-- 「関連情報を調べる」→ `delegate_task(agent_type: "researcher", ...)` で関連テーマを調査
+- 「関連情報を調べる」→ `delegate_task(agent_type: "researcher", ...)` で関連テーマを調査し、結果を次の `ask_selection` の question に含めて提示
 - 「これで完了」
 
 ## 完了時の最終出力
-3行要約・要点3つ・読む価値判定を含む要約を最後のテキスト出力として残す。
+3行要約・要点3つ・読む価値判定を含む要約を最後のテキスト出力として残す。この最終テキストだけがチャット画面に表示される。
