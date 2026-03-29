@@ -58,7 +58,6 @@ ask_selection(
 選択肢:
 - 「別の観点で比較する」
 - 「もっと調べる」→ `delegate_task(agent_type: "researcher", ...)` で追加情報を取得し、結果を次の `ask_selection` の question に含めて比較を更新
-- 「これで完了」
 
 ### Step 4: 追加分析（必要な場合）
 追加の観点や情報で比較を深め、更新した比較結果を提示する。

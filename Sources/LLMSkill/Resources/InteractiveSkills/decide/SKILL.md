@@ -66,7 +66,6 @@ ask_selection(
 - 「もう少し調べる」→ `delegate_task(agent_type: "researcher", ...)` で追加調査し、結果を次の `ask_selection` の question に含めて提示
 - 「別の角度で分析する」→ 別のフレームワークで再分析
 - 「記録に残す」→ `memory` に決定内容を保存
-- 「これで完了」
 
 ### Step 5: 記録（選択された場合）
 `memory` に決定内容（選択肢・判断理由・次のアクション）を保存する。
