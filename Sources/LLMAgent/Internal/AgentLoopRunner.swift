@@ -255,6 +255,7 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
                     toolChoice: tools.isEmpty ? nil : .auto,
                     responseSchema: responseSchema,
                     thinkingMode: config.thinkingMode,
+                    reasoningEffort: config.reasoningEffort,
                     maxTokens: config.maxTokens
                 )
             } catch let error as LLMError {
@@ -271,6 +272,7 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
                     toolChoice: nil,
                     responseSchema: Output.jsonSchema,
                     thinkingMode: config.thinkingMode,
+                    reasoningEffort: config.reasoningEffort,
                     maxTokens: config.maxTokens
                 )
             } catch let error as LLMError {

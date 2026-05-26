@@ -264,6 +264,7 @@ private struct MockAgentClient: AgentCapableClient {
         toolChoice: ToolChoice?,
         responseSchema: JSONSchema?,
         thinkingMode: ThinkingMode,
+        reasoningEffort: ReasoningEffort?,
         maxTokens: Int?
     ) async throws -> LLMResponse {
         LLMResponse(

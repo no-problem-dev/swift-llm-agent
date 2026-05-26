@@ -101,6 +101,14 @@ public struct AgentConfiguration: Sendable {
     /// 思考プロセスをストリーミングで返します。
     public let thinkingMode: ThinkingMode
 
+    /// OpenAI reasoning モデル (GPT-5 系) の `reasoning_effort` 設定
+    ///
+    /// `nil` の場合は API のデフォルト（一般に `medium`）が使われる。
+    /// `.low` を指定するとレイテンシ／コストを大幅に下げられる。
+    /// `.minimal` は parallel tool call が無効化される点に注意。
+    /// Anthropic / Gemini など、非対応プロバイダーでは無視される。
+    public let reasoningEffort: ReasoningEffort?
+
     /// 構造化出力フェーズをスキップするか
     ///
     /// `true` の場合、ツール呼び出しが完了した後に finalOutput フェーズ
@@ -132,6 +140,7 @@ public struct AgentConfiguration: Sendable {
         maxInteractiveCalls: Int? = nil,
         parallelToolExecution: Bool = true,
         thinkingMode: ThinkingMode = .disabled,
+        reasoningEffort: ReasoningEffort? = nil,
         skipFinalOutput: Bool = false,
         maxTokens: Int? = nil
     ) {
@@ -143,6 +152,7 @@ public struct AgentConfiguration: Sendable {
         self.maxInteractiveCalls = maxInteractiveCalls
         self.parallelToolExecution = parallelToolExecution
         self.thinkingMode = thinkingMode
+        self.reasoningEffort = reasoningEffort
         self.skipFinalOutput = skipFinalOutput
         self.maxTokens = maxTokens
     }
@@ -162,6 +172,7 @@ public struct AgentConfiguration: Sendable {
             maxInteractiveCalls: 0,
             parallelToolExecution: parallelToolExecution,
             thinkingMode: thinkingMode,
+            reasoningEffort: reasoningEffort,
             skipFinalOutput: skipFinalOutput,
             maxTokens: maxTokens
         )

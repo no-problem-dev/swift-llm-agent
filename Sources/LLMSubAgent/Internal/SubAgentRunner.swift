@@ -134,6 +134,7 @@ package enum SubAgentRunner {
                         toolChoice: tools.isEmpty ? nil : .auto,
                         responseSchema: nil,
                         thinkingMode: configuration.thinkingMode,
+                        reasoningEffort: configuration.reasoningEffort,
                         maxTokens: configuration.maxTokens
                     )
                     }

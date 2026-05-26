@@ -232,6 +232,7 @@ internal actor TextAgentLoopRunner<Client: AgentCapableClient>
                 toolChoice: tools.isEmpty ? nil : .auto,
                 responseSchema: nil, // テキスト出力モード: 構造化スキーマは要求しない
                 thinkingMode: config.thinkingMode,
+                reasoningEffort: config.reasoningEffort,
                 maxTokens: config.maxTokens
             )
         } catch let error as LLMError {

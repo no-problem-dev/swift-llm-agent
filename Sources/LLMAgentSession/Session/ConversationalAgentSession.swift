@@ -323,6 +323,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                             toolChoice: tools.isEmpty ? nil : .auto,
                             responseSchema: nil,
                             thinkingMode: configuration.thinkingMode,
+                            reasoningEffort: configuration.reasoningEffort,
                             maxTokens: configuration.maxTokens
                         ) {
                             switch event {
@@ -354,6 +355,7 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                             toolChoice: nil,
                             responseSchema: Output.jsonSchema,
                             thinkingMode: configuration.thinkingMode,
+                            reasoningEffort: configuration.reasoningEffort,
                             maxTokens: configuration.maxTokens
                         ) {
                             switch event {
