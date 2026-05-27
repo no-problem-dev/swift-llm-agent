@@ -91,6 +91,7 @@ let package = Package(
             .product(name: "A2UICore", package: "swift-a2ui"),
             .product(name: "A2UIParser", package: "swift-a2ui"),
             .product(name: "A2UIPrompt", package: "swift-a2ui"),
+            .product(name: "A2UISurface", package: "swift-a2ui"),
             .product(name: "LLMClient", package: "swift-llm-client"),
             .product(name: "LLMTool", package: "swift-llm-client"),
         ]),
