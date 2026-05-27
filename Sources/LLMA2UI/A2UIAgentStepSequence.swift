@@ -63,68 +63,103 @@ where Client.Model: Sendable {
         a2uiConfiguration: A2UIAgentConfiguration,
         continuation: AsyncThrowingStream<A2UIAgentStep, Error>.Continuation
     ) async {
-        var messages = initialMessages
-        var retryCount = 0
-
         do {
-            while retryCount <= a2uiConfiguration.maxParseRetries {
-                let textStream = client.runAgentText(
-                    messages: messages,
-                    model: model,
-                    tools: tools,
-                    systemPrompt: systemPrompt,
-                    configuration: agentConfiguration
-                )
+            // Phase 1: Full agent loop with tools
+            var messages = initialMessages
+            let textStream = client.runAgentText(
+                messages: messages,
+                model: model,
+                tools: tools,
+                systemPrompt: systemPrompt,
+                configuration: agentConfiguration
+            )
 
-                var finalText: String?
-
-                for try await step in textStream {
-                    switch step {
-                    case .thinking(let response):
-                        continuation.yield(.thinking(response))
-                    case .toolCall(let call):
-                        continuation.yield(.toolCall(call))
-                    case .toolResult(let result):
-                        continuation.yield(.toolResult(result))
-                    case .finalText(let text):
-                        finalText = text
-                    }
-                }
-
-                guard let text = finalText else {
-                    continuation.finish()
-                    return
-                }
-
-                let result = A2UIResponseParser.parse(text)
-
-                switch result {
-                case .success(let parts):
-                    for part in parts {
-                        continuation.yield(.responsePart(part))
-                    }
-                    continuation.finish()
-                    return
-
-                case .failure(let originalText, let errors):
-                    retryCount += 1
-                    if retryCount > a2uiConfiguration.maxParseRetries {
-                        continuation.yield(.responsePart(A2UIResponsePart(text: originalText)))
-                        continuation.finish()
-                        return
-                    }
-
-                    messages.append(.assistant(originalText))
-                    let retryPrompt = A2UIResponseParser.formatRetryPrompt(
-                        originalText: originalText, errors: errors
-                    )
-                    messages.append(.user(retryPrompt))
+            var finalText: String?
+            for try await step in textStream {
+                switch step {
+                case .thinking(let response):
+                    continuation.yield(.thinking(response))
+                case .toolCall(let call):
+                    continuation.yield(.toolCall(call))
+                case .toolResult(let result):
+                    continuation.yield(.toolResult(result))
+                case .finalText(let text):
+                    finalText = text
                 }
             }
 
+            guard let text = finalText else {
+                continuation.finish()
+                return
+            }
+
+            // Phase 2: Parse and retry if needed
+            let parsed = try await parseWithRetry(
+                text: text,
+                messages: &messages,
+                client: client,
+                model: model,
+                systemPrompt: systemPrompt,
+                a2uiConfiguration: a2uiConfiguration,
+                continuation: continuation
+            )
+
+            for part in parsed {
+                continuation.yield(.responsePart(part))
+            }
             continuation.finish()
         } catch {
             continuation.finish(throwing: error)
         }
+    }
+
+    /// Parse A2UI blocks from text. On failure, retry with a direct LLM call (no tools).
+    private static func parseWithRetry(
+        text: String,
+        messages: inout [LLMMessage],
+        client: Client,
+        model: Client.Model,
+        systemPrompt: SystemPrompt,
+        a2uiConfiguration: A2UIAgentConfiguration,
+        continuation: AsyncThrowingStream<A2UIAgentStep, Error>.Continuation
+    ) async throws -> [A2UIResponsePart] {
+        var currentText = text
+
+        for attempt in 0...a2uiConfiguration.maxParseRetries {
+            let result = A2UIResponseParser.parse(currentText)
+
+            switch result {
+            case .success(let parts):
+                return parts
+
+            case .failure(let originalText, let errors):
+                if attempt == a2uiConfiguration.maxParseRetries {
+                    return [A2UIResponsePart(text: originalText)]
+                }
+
+                // Retry: direct LLM call without tools to save tokens
+                messages.append(.assistant(originalText))
+                messages.append(.user(
+                    A2UIResponseParser.formatRetryPrompt(originalText: originalText, errors: errors)
+                ))
+
+                let response = try await client.executeAgentStep(
+                    messages: messages,
+                    model: model,
+                    systemPrompt: systemPrompt,
+                    tools: ToolSet {},
+                    toolChoice: nil,
+                    responseSchema: nil,
+                    thinkingMode: .disabled,
+                    reasoningEffort: nil,
+                    maxTokens: nil
+                )
+
+                continuation.yield(.thinking(response))
+                currentText = response.text
+            }
+        }
+
+        return [A2UIResponsePart(text: currentText)]
     }
 }
