@@ -226,6 +226,8 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
 
         let event = pendingEvents.removeFirst()
         switch event {
+        case .thinking(let response):
+            return .thinking(response)
         case .toolCall(let info):
             return .toolCall(info)
         case .toolResult(let info):

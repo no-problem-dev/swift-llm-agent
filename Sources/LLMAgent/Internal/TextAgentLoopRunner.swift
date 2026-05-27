@@ -24,6 +24,15 @@ internal actor TextAgentLoopRunner<Client: AgentCapableClient>
     private var pendingEvents: [PendingEvent] = []
     private var phase: TextPhase = .toolUse
 
+    private var deferredFinalStep: AgentTextStep?
+
+    /// `.toolCall` を流したがまだ実行していない呼び出し。実行を次の `nextStep` まで遅延させ、
+    /// `.toolCall` →（実行）→ `.toolResult` の間に実体時間を生む。
+    private var pendingToolExecutions: [ToolCall] = []
+
+    private var executedToolResults: [ToolResponse] = []
+    private var lastExecutedBatch: [ToolResponse] = []
+
     init(client: Client, model: Client.Model, context: AgentContext, configuration: AgentConfiguration) {
         self.client = client
         self.model = model
@@ -41,12 +50,21 @@ internal actor TextAgentLoopRunner<Client: AgentCapableClient>
             return event
         }
 
+        // .toolCall を流し切ってから、ここで初めてツールを実行して .toolResult を流す。
+        if let result = try await nextToolResult() {
+            return result
+        }
+
+        if let final = deferredFinalStep {
+            deferredFinalStep = nil
+            return final
+        }
+
         if phase == .completed {
             return nil
         }
 
         if await stateManager.isAtStepLimit {
-            // 上限到達: 最後の assistant メッセージを finalText として返して完了。
             let lastText = await context.getLastAssistantText()
             phase = .completed
             await context.markCompleted()
@@ -67,7 +85,39 @@ internal actor TextAgentLoopRunner<Client: AgentCapableClient>
             context: stateManager
         )
 
-        return try await handleDecision(decision, response: response)
+        // usage を先に流すため、後続ステップは pending / deferred に退避してから .thinking を返す。
+        if let following = try await handleDecision(decision, response: response) {
+            switch following {
+            case .toolCall(let call):
+                pendingEvents.insert(.toolCall(call), at: 0)
+            case .toolResult(let result):
+                pendingEvents.insert(.toolResult(result), at: 0)
+            case .thinking, .finalText:
+                deferredFinalStep = following
+            }
+        }
+
+        return .thinking(response)
+    }
+
+    /// 未実行のツール呼び出しがあれば実行し、結果を 1 件ずつ `.toolResult` として返す。
+    private func nextToolResult() async throws -> AgentTextStep? {
+        if executedToolResults.isEmpty, !pendingToolExecutions.isEmpty {
+            let calls = pendingToolExecutions
+            pendingToolExecutions = []
+            executedToolResults = try await executeTools(calls)
+        }
+
+        guard !executedToolResults.isEmpty else {
+            return nil
+        }
+
+        let result = executedToolResults.removeFirst()
+        if executedToolResults.isEmpty {
+            await context.addToolResults(lastExecutedBatch)
+            lastExecutedBatch = []
+        }
+        return .toolResult(result)
     }
 
     func currentPhase() -> AgentExecutionPhase {
@@ -101,66 +151,57 @@ internal actor TextAgentLoopRunner<Client: AgentCapableClient>
         }
     }
 
+    /// `.toolCall` を pending に積み、実行は遅延キューへ回す。最初の `.toolCall` を返す。
     private func processToolCalls(_ calls: [ToolCall]) async throws -> AgentTextStep? {
-        let config = await context.getConfiguration()
-
-        if config.autoExecuteTools {
-            for call in calls {
-                await stateManager.recordToolCall(call)
-                pendingEvents.append(.toolCall(call))
-            }
-
-            let results: [ToolResponse]
-            if calls.count <= 1 || !config.parallelToolExecution {
-                var sequential: [ToolResponse] = []
-                for call in calls {
-                    try Task.checkCancellation()
-                    let result = await executeToolSafely(call)
-                    sequential.append(result)
-                    pendingEvents.append(.toolResult(result))
-                }
-                results = sequential
-            } else {
-                let toolSet = await context.getTools()
-                results = await withTaskGroup(of: (Int, ToolResponse).self) { group in
-                    for (index, call) in calls.enumerated() {
-                        group.addTask {
-                            do {
-                                let result = try await toolSet.execute(
-                                    toolNamed: call.name, with: call.arguments
-                                )
-                                return (index, ToolResponse(
-                                    callId: call.id, name: call.name,
-                                    content: .success(result.stringValue)
-                                ))
-                            } catch {
-                                return (index, ToolResponse(
-                                    callId: call.id, name: call.name,
-                                    content: .failure("Error: \(error.localizedDescription)")
-                                ))
-                            }
-                        }
-                    }
-                    var indexed: [(Int, ToolResponse)] = []
-                    for await pair in group {
-                        guard !Task.isCancelled else { break }
-                        indexed.append(pair)
-                    }
-                    return indexed.sorted(by: { $0.0 < $1.0 }).map(\.1)
-                }
-                for result in results {
-                    pendingEvents.append(.toolResult(result))
-                }
-            }
-
-            await context.addToolResults(results)
-            return consumePendingEvent()
-        } else {
-            // 自動実行オフ: 完了扱い。
+        guard await context.getConfiguration().autoExecuteTools else {
             phase = .completed
             await context.markCompleted()
             return nil
         }
+
+        for call in calls {
+            await stateManager.recordToolCall(call)
+            pendingEvents.append(.toolCall(call))
+        }
+        pendingToolExecutions = calls
+        return consumePendingEvent()
+    }
+
+    /// ツールを実行して結果を返す。`context` への反映は呼び出し側（`nextToolResult`）が行う。
+    private func executeTools(_ calls: [ToolCall]) async throws -> [ToolResponse] {
+        let config = await context.getConfiguration()
+
+        if calls.count <= 1 || !config.parallelToolExecution {
+            var results: [ToolResponse] = []
+            for call in calls {
+                try Task.checkCancellation()
+                results.append(await executeToolSafely(call))
+            }
+            lastExecutedBatch = results
+            return results
+        }
+
+        let toolSet = await context.getTools()
+        let results = await withTaskGroup(of: (Int, ToolResponse).self) { group in
+            for (index, call) in calls.enumerated() {
+                group.addTask {
+                    do {
+                        let result = try await toolSet.execute(toolNamed: call.name, with: call.arguments)
+                        return (index, ToolResponse(callId: call.id, name: call.name, content: .success(result.stringValue)))
+                    } catch {
+                        return (index, ToolResponse(callId: call.id, name: call.name, content: .failure("Error: \(error.localizedDescription)")))
+                    }
+                }
+            }
+            var indexed: [(Int, ToolResponse)] = []
+            for await pair in group {
+                guard !Task.isCancelled else { break }
+                indexed.append(pair)
+            }
+            return indexed.sorted(by: { $0.0 < $1.0 }).map(\.1)
+        }
+        lastExecutedBatch = results
+        return results
     }
 
     private func finalizeAsText(response: LLMResponse) async throws -> AgentTextStep? {
@@ -209,6 +250,8 @@ internal actor TextAgentLoopRunner<Client: AgentCapableClient>
 
         let event = pendingEvents.removeFirst()
         switch event {
+        case .thinking(let response):
+            return .thinking(response)
         case .toolCall(let info):
             return .toolCall(info)
         case .toolResult(let info):

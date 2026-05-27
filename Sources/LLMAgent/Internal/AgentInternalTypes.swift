@@ -78,8 +78,13 @@ package enum AgentLoopConstants {
 
 /// 保留中のイベント
 ///
-/// ツール呼び出しと結果を順次返すためにバッファリングされるイベントです。
+/// 思考（LLM 応答）・ツール呼び出し・結果を順次返すためにバッファリングされるイベントです。
 internal enum PendingEvent: Sendable {
+    /// 思考イベント（LLM の生レスポンス。`usage` を含む）。
+    ///
+    /// ツールを呼ぶターンでも `usage` をストリームへ漏らさず届けるために用いる。
+    case thinking(LLMResponse)
+
     /// ツール呼び出しイベント
     case toolCall(ToolCall)
 
