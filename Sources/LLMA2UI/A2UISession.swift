@@ -44,8 +44,7 @@ public actor A2UISession<Client: AgentCapableClient> where Client.Model: Sendabl
         client: Client,
         model: Client.Model,
         tools: ToolSet = ToolSet {},
-        role: String = "You are a helpful assistant that generates A2UI interfaces.",
-        additionalSystemPrompt: SystemPrompt? = nil,
+        promptConfiguration: A2UIPromptConfiguration = .default,
         agentConfiguration: AgentConfiguration = .default,
         a2uiConfiguration: A2UIAgentConfiguration = .default
     ) {
@@ -54,14 +53,7 @@ public actor A2UISession<Client: AgentCapableClient> where Client.Model: Sendabl
         self.tools = tools
         self.agentConfiguration = agentConfiguration
         self.a2uiConfiguration = a2uiConfiguration
-
-        let promptBuilder = A2UIPromptBuilder()
-        let a2uiPrompt = promptBuilder.buildSystemPrompt(role: role)
-        var prompt = SystemPrompt { PromptComponent.context(a2uiPrompt) }
-        if let additional = additionalSystemPrompt {
-            prompt = prompt + additional
-        }
-        self.systemPrompt = prompt
+        self.systemPrompt = promptConfiguration.makeSystemPrompt()
 
         self.store = SurfaceStore()
         self.coordinator = SurfaceCoordinator(store: store)
