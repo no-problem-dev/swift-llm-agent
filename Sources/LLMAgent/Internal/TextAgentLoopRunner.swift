@@ -69,7 +69,7 @@ internal actor TextAgentLoopRunner<Client: AgentCapableClient>
             phase = .completed
             await context.markCompleted()
             if !lastText.isEmpty {
-                return .finalText(lastText)
+                return .finalText(text: lastText, messages: await context.getMessages())
             }
             throw AgentError.maxStepsExceeded(steps: stateManager.maxSteps)
         }
@@ -212,7 +212,7 @@ internal actor TextAgentLoopRunner<Client: AgentCapableClient>
     private func finalize(text: String) async throws -> AgentTextStep? {
         phase = .completed
         await context.markCompleted()
-        return .finalText(text)
+        return .finalText(text: text, messages: await context.getMessages())
     }
 
     private func handleImmediateTermination(_ reason: TerminationReason, response: LLMResponse) async throws -> AgentTextStep? {
@@ -222,12 +222,12 @@ internal actor TextAgentLoopRunner<Client: AgentCapableClient>
         switch reason {
         case .completed, .emptyResponse, .unexpectedStopReason:
             let text = await context.extractText(from: response)
-            return text.isEmpty ? nil : .finalText(text)
+            return text.isEmpty ? nil : .finalText(text: text, messages: await context.getMessages())
 
         case .maxStepsReached:
             let lastText = await context.getLastAssistantText()
             if !lastText.isEmpty {
-                return .finalText(lastText)
+                return .finalText(text: lastText, messages: await context.getMessages())
             }
             throw AgentError.maxStepsExceeded(steps: stateManager.maxSteps)
 

@@ -65,9 +65,8 @@ where Client.Model: Sendable {
     ) async {
         do {
             // Phase 1: Full agent loop with tools
-            var messages = initialMessages
             let textStream = client.runAgentText(
-                messages: messages,
+                messages: initialMessages,
                 model: model,
                 tools: tools,
                 systemPrompt: systemPrompt,
@@ -75,6 +74,7 @@ where Client.Model: Sendable {
             )
 
             var finalText: String?
+            var messages: [LLMMessage] = initialMessages
             for try await step in textStream {
                 switch step {
                 case .thinking(let response):
@@ -83,12 +83,14 @@ where Client.Model: Sendable {
                     continuation.yield(.toolCall(call))
                 case .toolResult(let result):
                     continuation.yield(.toolResult(result))
-                case .finalText(let text):
+                case .finalText(let text, let finalMessages):
                     finalText = text
+                    messages = finalMessages
                 }
             }
 
             guard let text = finalText else {
+                continuation.yield(.turnCompleted(messages: messages))
                 continuation.finish()
                 return
             }
@@ -107,6 +109,7 @@ where Client.Model: Sendable {
             for part in parsed {
                 continuation.yield(.responsePart(part))
             }
+            continuation.yield(.turnCompleted(messages: messages))
             continuation.finish()
         } catch {
             continuation.finish(throwing: error)

@@ -21,7 +21,9 @@ public enum AgentTextStep: Sendable {
     case toolResult(ToolResponse)
 
     /// ループ完了。`text` は LLM の最終テキスト応答（ツール呼び出しが含まれていないターン）。
-    case finalText(String)
+    /// `messages` はこのターンで構築された会話履歴（tool use / tool result も含む完全な列）。
+    /// 次ターンに引き継いで再送することで、モデルが直前のツール呼び出しと結果を参照できる。
+    case finalText(text: String, messages: [LLMMessage])
 }
 
 // MARK: - AgentTextStepStream
