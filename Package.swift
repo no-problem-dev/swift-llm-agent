@@ -23,7 +23,7 @@ let package = Package(
         .package(url: "https://github.com/no-problem-dev/swift-a2a.git", from: "0.1.1"),
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.1"),
         .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.6.0"),
-        .package(url: "https://github.com/no-problem-dev/swift-a2ui.git", from: "0.4.0"),
+        .package(url: "https://github.com/no-problem-dev/swift-a2ui.git", from: "0.5.0"),
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.4.0"),
     ],
     targets: [
