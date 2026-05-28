@@ -69,7 +69,7 @@ struct A2UIRetryPromptTests {
 
     @Test func formatRetryPromptContainsErrorDetails() {
         let errors = [
-            A2UIParseError(blockIndex: 0, rawJSON: "{bad json}", error: "Expected comma"),
+            A2UIParseError(blockIndex: 0, rawJSON: "{bad json}", message: "Expected comma"),
         ]
         let prompt = A2UIResponseParser.formatRetryPrompt(originalText: "...", errors: errors)
         #expect(prompt.contains("Expected comma"))
@@ -79,8 +79,8 @@ struct A2UIRetryPromptTests {
 
     @Test func formatRetryPromptWithMultipleErrors() {
         let errors = [
-            A2UIParseError(blockIndex: 0, rawJSON: "", error: "Missing version field"),
-            A2UIParseError(blockIndex: 1, rawJSON: "", error: "Unknown component type"),
+            A2UIParseError(blockIndex: 0, rawJSON: "", message: "Missing version field"),
+            A2UIParseError(blockIndex: 1, rawJSON: "", message: "Unknown component type"),
         ]
         let prompt = A2UIResponseParser.formatRetryPrompt(originalText: "...", errors: errors)
         #expect(prompt.contains("Missing version field"))

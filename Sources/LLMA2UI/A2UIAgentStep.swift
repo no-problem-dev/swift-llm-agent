@@ -8,4 +8,6 @@ public enum A2UIAgentStep: Sendable {
     case toolCall(ToolCall)
     case toolResult(ToolResponse)
     case responsePart(A2UIResponsePart)
+    /// Emitted around each decode attempt and retry so hosts can show parse activity in debug UIs.
+    case decodeEvent(A2UIDecodeEvent)
 }

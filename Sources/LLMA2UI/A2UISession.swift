@@ -145,6 +145,8 @@ public actor A2UISession<Client: AgentCapableClient> where Client.Model: Sendabl
                                     continuation.yield(.surfaceUpdated(surfaceId))
                                 }
                             }
+                        case .decodeEvent(let event):
+                            continuation.yield(.decodeEvent(event))
                         }
                     }
 

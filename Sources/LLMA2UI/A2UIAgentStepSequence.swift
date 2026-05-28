@@ -124,20 +124,29 @@ where Client.Model: Sendable {
         continuation: AsyncThrowingStream<A2UIAgentStep, Error>.Continuation
     ) async throws -> [A2UIResponsePart] {
         var currentText = text
+        var lastErrors: [A2UIParseError] = []
 
         for attempt in 0...a2uiConfiguration.maxParseRetries {
+            continuation.yield(.decodeEvent(.attempt(index: attempt, text: currentText)))
             let result = A2UIResponseParser.parse(currentText)
 
             switch result {
             case .success(let parts):
+                continuation.yield(.decodeEvent(.succeeded(attemptIndex: attempt, parts: parts)))
                 return parts
 
             case .failure(let originalText, let errors):
+                lastErrors = errors
+                continuation.yield(.decodeEvent(.failed(attemptIndex: attempt, text: originalText, errors: errors)))
+
                 if attempt == a2uiConfiguration.maxParseRetries {
+                    continuation.yield(.decodeEvent(.retriesExhausted(attempts: attempt + 1, lastErrors: errors)))
                     return [A2UIResponsePart(text: originalText)]
                 }
 
-                // Retry: direct LLM call without tools to save tokens
+                let reasons = errors.map(\.message)
+                continuation.yield(.decodeEvent(.retryRequested(nextAttemptIndex: attempt + 1, reasons: reasons)))
+
                 messages.append(.assistant(originalText))
                 messages.append(.user(
                     A2UIResponseParser.formatRetryPrompt(originalText: originalText, errors: errors)
@@ -160,6 +169,7 @@ where Client.Model: Sendable {
             }
         }
 
+        continuation.yield(.decodeEvent(.retriesExhausted(attempts: a2uiConfiguration.maxParseRetries + 1, lastErrors: lastErrors)))
         return [A2UIResponsePart(text: currentText)]
     }
 }
