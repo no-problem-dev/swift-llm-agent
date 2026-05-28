@@ -157,11 +157,24 @@ public struct AgentConfiguration: Sendable {
         self.maxTokens = maxTokens
     }
 
+    /// `reasoningEffort` だけ差し替えたコピー。
+    public func with(reasoningEffort: ReasoningEffort?) -> AgentConfiguration {
+        AgentConfiguration(
+            maxSteps: maxSteps,
+            softMaxSteps: softMaxSteps,
+            autoExecuteTools: autoExecuteTools,
+            maxDuplicateToolCalls: maxDuplicateToolCalls,
+            maxToolCallsPerTool: maxToolCallsPerTool,
+            maxInteractiveCalls: maxInteractiveCalls,
+            parallelToolExecution: parallelToolExecution,
+            thinkingMode: thinkingMode,
+            reasoningEffort: reasoningEffort,
+            skipFinalOutput: skipFinalOutput,
+            maxTokens: maxTokens
+        )
+    }
+
     /// バックグラウンド実行用の設定を返す
-    ///
-    /// インタラクティブツールを禁止した設定のコピーを返します。
-    /// バックグラウンドではユーザーとのインタラクションが不可能なため、
-    /// `maxInteractiveCalls` を `0` に設定します。
     public var forBackground: AgentConfiguration {
         AgentConfiguration(
             maxSteps: maxSteps,

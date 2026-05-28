@@ -32,7 +32,8 @@ public final class A2UISession<Client: AgentCapableClient> where Client.Model: S
     public var model: Client.Model
     private let tools: ToolSet
     private let systemPrompt: SystemPrompt
-    private let agentConfiguration: AgentConfiguration
+    /// エージェントループ設定。`reasoningEffort` などをターンごとに変えたい場合は直接書き換える。
+    public var agentConfiguration: AgentConfiguration
     private let a2uiConfiguration: A2UIAgentConfiguration
 
     /// SwiftUI が bind する surface state。

@@ -9,16 +9,11 @@ import LLMClient
 /// schema block reflects their catalog — without the caller having to re-assemble (and risk
 /// duplicating) the A2UI schema in an `additionalSystemPrompt`.
 public struct A2UIPromptConfiguration: Sendable {
-    /// The assistant role / persona line.
     public var role: String
-    /// Builder that owns the schema block (server-to-client, common types, **catalog**).
-    /// Inject a builder constructed with a custom `catalogSchema` to target your own catalog.
     public var promptBuilder: A2UIPromptBuilder
-    /// Workflow rules. `nil` uses `A2UIWorkflowRules.default`.
     public var workflowRules: String?
-    /// Optional "## UI Description:" section (if-then UI guidance).
     public var uiDescription: String?
-    /// Extra prompt appended after the A2UI prompt (non-schema app context, tool guidance, etc.).
+    public var examples: String?
     public var additionalSystemPrompt: SystemPrompt?
 
     public init(
@@ -26,24 +21,25 @@ public struct A2UIPromptConfiguration: Sendable {
         promptBuilder: A2UIPromptBuilder = A2UIPromptBuilder(),
         workflowRules: String? = nil,
         uiDescription: String? = nil,
+        examples: String? = nil,
         additionalSystemPrompt: SystemPrompt? = nil
     ) {
         self.role = role
         self.promptBuilder = promptBuilder
         self.workflowRules = workflowRules
         self.uiDescription = uiDescription
+        self.examples = examples
         self.additionalSystemPrompt = additionalSystemPrompt
     }
 
     public static let `default` = A2UIPromptConfiguration()
 
-    /// Assemble the full `SystemPrompt`: the A2UI prompt (role + workflow + UI + schema) followed
-    /// by any `additionalSystemPrompt`.
     func makeSystemPrompt() -> SystemPrompt {
         let a2uiPrompt = promptBuilder.buildSystemPrompt(
             role: role,
             workflowRules: workflowRules,
-            uiDescription: uiDescription
+            uiDescription: uiDescription,
+            examples: examples
         )
         var full = SystemPrompt {
             PromptComponent.context(a2uiPrompt)
