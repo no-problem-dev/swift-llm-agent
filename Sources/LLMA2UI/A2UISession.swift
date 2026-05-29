@@ -25,17 +25,17 @@ import LLMTool
 ///
 /// // SurfaceView などからは session.messageProcessor.surface(id:) で取得
 /// ```
-/// `ServerMessage` の前処理フック。`A2UISession` がモデル出力を `MessageProcessor.process` に流す
-/// 直前に呼ばれる。デフォルトでは `SurfaceIdHealer` が surface id 衝突を解消するのみ。
+/// `ServerMessage` の前処理フック。`A2UISession` がターン末（`turnCompleted`）のタイミングで、
+/// そのターンに蓄積された全ての `ServerMessage` をまとめて 1 度だけ呼び出す。
+/// デフォルトでは `SurfaceIdHealer` が surface id 衝突を解消するのみ。
 ///
 /// `LLMA2UIChat` のような派生セッションは独自の healer を差し込んで append-only 等のポリシーを
-/// 実現する。
+/// 実現する。ターン全体のメッセージ列を 1 度に受け取るため、healer 内で「同ターンで作成した
+/// surface」と「過去ターンの surface」を区別する状態管理が成立する。
 ///
-/// `existing` の意味は **「現ターン開始時点で MessageProcessor が保持していた surface id 群」**
-/// （= 過去ターン由来の surface 集合）。`A2UISession` がターン冒頭で 1 度だけ計算し、ターン内の
-/// 複数の `responsePart` に対して同じ値を渡す。同ターン内で新たに createSurface した surface は
-/// `existing` には含まれない — append-only 系の healer が "過去 surface" と誤認しないようにする
-/// ためのコントラクト。
+/// `existing` の意味は **「ターン処理直前で MessageProcessor が保持していた surface id 群」**
+/// （= 過去ターン由来の surface 集合）。同ターン内で healer が処理する `createSurface` は
+/// `existing` には含まれない。
 public protocol A2UIServerMessageHealer: Sendable {
     @MainActor
     func heal(_ messages: [ServerMessage], existing: Set<String>) -> [ServerMessage]
@@ -142,13 +142,6 @@ public final class A2UISession<Client: AgentCapableClient> where Client.Model: S
         return AsyncThrowingStream { continuation in
             Task { @MainActor [weak self] in
                 do {
-                    // ターン開始時点の surface ids を固定。
-                    // responsePart はストリーミングで複数回に分割されることがあり、part #N で
-                    // 作成した surface を part #N+1 の healer が "過去 surface" と誤認すると
-                    // append-only 系の fork ロジックが暴発する（例: createSurface(X) → updateComponents(X)
-                    // が分割されたとき X-2 が生成される）。これを防ぐためにターン全体で固定値を使う。
-                    let turnLockedIds = Set(messageProcessor.surfaces.keys)
-
                     var messages = history
                     if let ctx = Self.buildDataModelContext(processor: messageProcessor) {
                         messages.append(.user(ctx))
@@ -165,6 +158,12 @@ public final class A2UISession<Client: AgentCapableClient> where Client.Model: S
                         a2uiConfiguration: a2uiConfig
                     )
 
+                    // responsePart はストリーミングで複数回に分割されることがある。
+                    // healer (特に append-only 系) は「ターン全体のメッセージ列」を 1 度に見る
+                    // 必要があるため、part ごとには処理せず、turnCompleted のタイミングで
+                    // まとめて 1 回だけ呼ぶ。
+                    var pendingServerMessages: [ServerMessage] = []
+
                     for try await step in stream {
                         switch step {
                         case .thinking(let response):
@@ -178,15 +177,22 @@ public final class A2UISession<Client: AgentCapableClient> where Client.Model: S
                                 continuation.yield(.text(text))
                             }
                             if let serverMessages = part.messages {
-                                let healed = healer.heal(serverMessages, existing: turnLockedIds)
-                                _ = messageProcessor.process(healed)
-                                for serverMessage in healed {
-                                    continuation.yield(.surfaceUpdated(Self.extractSurfaceId(from: serverMessage)))
-                                }
+                                pendingServerMessages.append(contentsOf: serverMessages)
                             }
                         case .decodeEvent(let event):
                             continuation.yield(.decodeEvent(event))
                         case .turnCompleted(let finalMessages):
+                            // ターン末: 蓄積した server messages をまとめて healer に渡し、
+                            // MessageProcessor に流す。existing はこの時点で確定。
+                            if !pendingServerMessages.isEmpty {
+                                let existing = Set(messageProcessor.surfaces.keys)
+                                let healed = healer.heal(pendingServerMessages, existing: existing)
+                                _ = messageProcessor.process(healed)
+                                for serverMessage in healed {
+                                    continuation.yield(.surfaceUpdated(Self.extractSurfaceId(from: serverMessage)))
+                                }
+                                pendingServerMessages.removeAll(keepingCapacity: false)
+                            }
                             self?.conversationHistory = historyProcessor.process(finalMessages)
                         }
                     }
