@@ -5,7 +5,8 @@ import A2UICore
 /// 入力された `[ServerMessage]` バッチを 1 ターン分とみなし、以下を適用する:
 ///
 /// 1. `createSurface`: 既存 / 同ターン内 と衝突する id は fresh id にリネーム。
-///    `sendDataModel = true` は **常に false に矯正**（append-only に積もる surface は静的）。
+///    `sendDataModel` は LLM 出力をそのまま透過（spec 準拠。ChoicePicker 等の入力値を
+///    次ターンの LLM に届けるために必要）。
 /// 2. `updateComponents`:
 ///    - 同ターン内で `createSurface` 済みの id を対象 → そのまま通す
 ///    - 過去ターンで作られた id（= `lockedIds`）を対象 → `createSurface` を**直前に挿入**して
@@ -45,7 +46,7 @@ internal enum SurfaceAppendHealer {
                     surfaceId: resolved,
                     catalogId: cs.catalogId,
                     theme: cs.theme,
-                    sendDataModel: false   // append-only では常に false
+                    sendDataModel: cs.sendDataModel   // LLM 出力をそのまま透過 (spec 準拠)
                 )))
 
             case .updateComponents(let uc):
@@ -69,7 +70,7 @@ internal enum SurfaceAppendHealer {
                         surfaceId: forkId,
                         catalogId: defaultCatalogId,
                         theme: nil,
-                        sendDataModel: false
+                        sendDataModel: nil   // 暗黙 fork 時は spec default に従う
                     )))
                     out.append(.updateComponents(UpdateComponents(
                         surfaceId: forkId, components: uc.components

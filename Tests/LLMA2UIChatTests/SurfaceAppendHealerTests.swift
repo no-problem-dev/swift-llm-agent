@@ -17,7 +17,6 @@ struct SurfaceAppendHealerTests {
         #expect(out.count == 2)
         if case .createSurface(let cs) = out[0] {
             #expect(cs.surfaceId == "s1")
-            #expect(cs.sendDataModel == false)   // 矯正されている
         } else {
             Issue.record("expected createSurface")
         }
@@ -41,7 +40,6 @@ struct SurfaceAppendHealerTests {
         }
         #expect(cs.surfaceId == "past-2")
         #expect(cs.catalogId == catalog)
-        #expect(cs.sendDataModel == false)
         if case .updateComponents(let uc) = out[1] {
             #expect(uc.surfaceId == "past-2")
         } else {
@@ -62,17 +60,24 @@ struct SurfaceAppendHealerTests {
         #expect(cs.surfaceId == "s1-2")
     }
 
-    @Test("sendDataModel=true は false に矯正される")
-    func sendDataModelForcedFalse() {
+    @Test("sendDataModel は LLM 出力をそのまま透過する (spec 準拠)")
+    func sendDataModelPassthrough() {
         let messages: [ServerMessage] = [
             .createSurface(.init(surfaceId: "s1", catalogId: catalog, sendDataModel: true)),
+            .createSurface(.init(surfaceId: "s2", catalogId: catalog, sendDataModel: false)),
+            .createSurface(.init(surfaceId: "s3", catalogId: catalog)),  // nil
         ]
         let out = SurfaceAppendHealer.heal(messages, lockedIds: [], defaultCatalogId: catalog)
-        guard case .createSurface(let cs) = out[0] else {
-            Issue.record("expected createSurface")
+        guard out.count == 3,
+              case .createSurface(let cs1) = out[0],
+              case .createSurface(let cs2) = out[1],
+              case .createSurface(let cs3) = out[2] else {
+            Issue.record("expected 3 createSurface")
             return
         }
-        #expect(cs.sendDataModel == false)
+        #expect(cs1.sendDataModel == true)
+        #expect(cs2.sendDataModel == false)
+        #expect(cs3.sendDataModel == nil)
     }
 
     @Test("過去 surface への updateDataModel は drop")
