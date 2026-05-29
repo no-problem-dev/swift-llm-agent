@@ -25,6 +25,38 @@ import LLMTool
 ///
 /// // SurfaceView などからは session.messageProcessor.surface(id:) で取得
 /// ```
+/// `ServerMessage` の前処理フック。`A2UISession` がモデル出力を `MessageProcessor.process` に流す
+/// 直前に呼ばれる。デフォルトでは `SurfaceIdHealer` が surface id 衝突を解消するのみ。
+///
+/// `LLMA2UIChat` のような派生セッションは独自の healer を差し込んで append-only 等のポリシーを
+/// 実現する。
+public protocol A2UIServerMessageHealer: Sendable {
+    @MainActor
+    func heal(_ messages: [ServerMessage], existing: Set<String>) -> [ServerMessage]
+}
+
+/// `conversationHistory` への積み込み直前にメッセージ列を加工するフック。
+/// デフォルトは何もせずそのまま返す。`LLMA2UIChat` は過去 `<a2ui-json>` を要約に置換する用途で
+/// 差し替える。
+public protocol A2UIHistoryProcessor: Sendable {
+    func process(_ messages: [LLMMessage]) -> [LLMMessage]
+}
+
+/// デフォルト実装: `SurfaceIdHealer.heal` をそのまま呼び出す。
+public struct DefaultA2UIServerMessageHealer: A2UIServerMessageHealer {
+    public init() {}
+    @MainActor
+    public func heal(_ messages: [ServerMessage], existing: Set<String>) -> [ServerMessage] {
+        SurfaceIdHealer.heal(messages, existing: existing)
+    }
+}
+
+/// デフォルト実装: 何もしないパススルー。
+public struct DefaultA2UIHistoryProcessor: A2UIHistoryProcessor {
+    public init() {}
+    public func process(_ messages: [LLMMessage]) -> [LLMMessage] { messages }
+}
+
 @MainActor
 public final class A2UISession<Client: AgentCapableClient> where Client.Model: Sendable {
     private let client: Client
@@ -35,6 +67,9 @@ public final class A2UISession<Client: AgentCapableClient> where Client.Model: S
     /// エージェントループ設定。`reasoningEffort` などをターンごとに変えたい場合は直接書き換える。
     public var agentConfiguration: AgentConfiguration
     private let a2uiConfiguration: A2UIAgentConfiguration
+
+    private let serverMessageHealer: any A2UIServerMessageHealer
+    private let historyProcessor: any A2UIHistoryProcessor
 
     /// SwiftUI が bind する surface state。
     public let messageProcessor: MessageProcessor
@@ -49,7 +84,9 @@ public final class A2UISession<Client: AgentCapableClient> where Client.Model: S
         messageProcessor: MessageProcessor = MessageProcessor(),
         promptConfiguration: A2UIPromptConfiguration = .default,
         agentConfiguration: AgentConfiguration = .default,
-        a2uiConfiguration: A2UIAgentConfiguration = .default
+        a2uiConfiguration: A2UIAgentConfiguration = .default,
+        serverMessageHealer: any A2UIServerMessageHealer = DefaultA2UIServerMessageHealer(),
+        historyProcessor: any A2UIHistoryProcessor = DefaultA2UIHistoryProcessor()
     ) {
         self.client = client
         self.model = model
@@ -57,6 +94,8 @@ public final class A2UISession<Client: AgentCapableClient> where Client.Model: S
         self.messageProcessor = messageProcessor
         self.agentConfiguration = agentConfiguration
         self.a2uiConfiguration = a2uiConfiguration
+        self.serverMessageHealer = serverMessageHealer
+        self.historyProcessor = historyProcessor
         self.systemPrompt = promptConfiguration.makeSystemPrompt()
     }
 
@@ -91,6 +130,8 @@ public final class A2UISession<Client: AgentCapableClient> where Client.Model: S
         let a2uiConfig = self.a2uiConfiguration
         let history = self.conversationHistory
         let messageProcessor = self.messageProcessor
+        let healer = self.serverMessageHealer
+        let historyProcessor = self.historyProcessor
 
         return AsyncThrowingStream { continuation in
             Task { @MainActor [weak self] in
@@ -125,7 +166,7 @@ public final class A2UISession<Client: AgentCapableClient> where Client.Model: S
                             }
                             if let serverMessages = part.messages {
                                 let existing = Set(messageProcessor.surfaces.keys)
-                                let healed = SurfaceIdHealer.heal(serverMessages, existing: existing)
+                                let healed = healer.heal(serverMessages, existing: existing)
                                 _ = messageProcessor.process(healed)
                                 for serverMessage in healed {
                                     continuation.yield(.surfaceUpdated(Self.extractSurfaceId(from: serverMessage)))
@@ -134,7 +175,7 @@ public final class A2UISession<Client: AgentCapableClient> where Client.Model: S
                         case .decodeEvent(let event):
                             continuation.yield(.decodeEvent(event))
                         case .turnCompleted(let finalMessages):
-                            self?.conversationHistory = finalMessages
+                            self?.conversationHistory = historyProcessor.process(finalMessages)
                         }
                     }
 

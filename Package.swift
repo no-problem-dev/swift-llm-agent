@@ -16,6 +16,7 @@ let package = Package(
         .library(name: "LLMSubAgent", targets: ["LLMSubAgent"]),
         .library(name: "LLMSkill", targets: ["LLMSkill"]),
         .library(name: "LLMA2UI", targets: ["LLMA2UI"]),
+        .library(name: "LLMA2UIChat", targets: ["LLMA2UIChat"]),
     ],
     dependencies: [
         .package(url: "https://github.com/no-problem-dev/swift-agent-communication.git", from: "1.1.0"),
@@ -95,6 +96,16 @@ let package = Package(
             .product(name: "LLMClient", package: "swift-llm-client"),
             .product(name: "LLMTool", package: "swift-llm-client"),
         ]),
+        .target(name: "LLMA2UIChat", dependencies: [
+            "LLMA2UI",
+            "LLMAgent",
+            .product(name: "A2UICore", package: "swift-a2ui"),
+            .product(name: "A2UIPrompt", package: "swift-a2ui"),
+            .product(name: "A2UIPromptCompact", package: "swift-a2ui"),
+            .product(name: "A2UISurface", package: "swift-a2ui"),
+            .product(name: "LLMClient", package: "swift-llm-client"),
+            .product(name: "LLMTool", package: "swift-llm-client"),
+        ]),
         .target(name: "LLMA2A", dependencies: [
             .product(name: "A2A", package: "swift-a2a"),
             .product(name: "LLMClient", package: "swift-llm-client"),
@@ -104,6 +115,7 @@ let package = Package(
         .testTarget(name: "LLMAgentTests", dependencies: ["LLMAgent"]),
         .testTarget(name: "LLMMCPTests", dependencies: ["LLMMCP"]),
         .testTarget(name: "LLMA2UITests", dependencies: ["LLMA2UI"]),
+        .testTarget(name: "LLMA2UIChatTests", dependencies: ["LLMA2UIChat"]),
         .testTarget(name: "LLMA2ATests", dependencies: ["LLMA2A"]),
         .testTarget(name: "LLMAgentSessionTests", dependencies: ["LLMAgentSession"]),
         .testTarget(name: "LLMProjectTests", dependencies: [
