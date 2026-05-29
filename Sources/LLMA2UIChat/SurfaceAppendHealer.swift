@@ -77,13 +77,15 @@ internal enum SurfaceAppendHealer {
             case .updateComponents(let uc):
                 let target = renames[uc.surfaceId] ?? uc.surfaceId
                 if createdThisTurn.contains(target) {
-                    // 同ターン surface → 透過
-                    if target != uc.surfaceId {
-                        out.append(.updateComponents(UpdateComponents(
-                            surfaceId: target, components: uc.components
+                    // 同ターン surface → 透過 (literal value の自動 path 化を適用)
+                    let repaired = repairLiteralInputValues(uc.components)
+                    out.append(.updateComponents(UpdateComponents(
+                        surfaceId: target, components: repaired.components
+                    )))
+                    for udm in repaired.dataModelSeeds {
+                        out.append(.updateDataModel(UpdateDataModel(
+                            surfaceId: target, path: udm.path, value: udm.value
                         )))
-                    } else {
-                        out.append(.updateComponents(uc))
                     }
                 } else if lockedIds.contains(target) {
                     // 過去 surface → 暗黙 fork
@@ -100,9 +102,15 @@ internal enum SurfaceAppendHealer {
                         theme: nil,
                         sendDataModel: forkSendDataModel
                     )))
+                    let repaired = repairLiteralInputValues(uc.components)
                     out.append(.updateComponents(UpdateComponents(
-                        surfaceId: forkId, components: uc.components
+                        surfaceId: forkId, components: repaired.components
                     )))
+                    for udm in repaired.dataModelSeeds {
+                        out.append(.updateDataModel(UpdateDataModel(
+                            surfaceId: forkId, path: udm.path, value: udm.value
+                        )))
+                    }
                 } else {
                     // hallucination → drop
                     continue
@@ -132,6 +140,53 @@ internal enum SurfaceAppendHealer {
     }
 
     // MARK: - Internal
+
+    /// `repairLiteralInputValues` の結果。修復後の components と、初期値を書き戻すための
+    /// `updateDataModel` 種を返す。
+    fileprivate struct RepairResult {
+        let components: [AnyCodable]
+        let dataModelSeeds: [(path: String, value: AnyCodable)]
+    }
+
+    /// `updateComponents.components` 内の入力 components の `value` が literal (path binding でない)
+    /// 場合に、自動で `{path: ...}` に書き換え、同時にデータモデルへの初期値書き込みを生成する。
+    ///
+    /// LLM が `value: ["a","b"]` のようなリテラルで出してきたケースを spec 通りの path binding に
+    /// 矯正する。これによりユーザーの入力変更が dataModel に流れ、`sendDataModel: true` 経由で
+    /// agent にも届くようになる。
+    ///
+    /// すでに `{path: ...}` で書かれているものは LLM の意思を尊重して触らない。
+    fileprivate static func repairLiteralInputValues(_ components: [AnyCodable]) -> RepairResult {
+        var seeds: [(path: String, value: AnyCodable)] = []
+        let repaired = components.map { component -> AnyCodable in
+            guard case .object(var dict) = component,
+                  case .string(let componentName)? = dict["component"],
+                  inputComponentNames.contains(componentName) else {
+                return component
+            }
+            // value が未指定 or 既に binding なら触らない
+            guard let value = dict["value"], !isPathBinding(value) else {
+                return component
+            }
+            // componentId を取得 (なければスキップ)
+            guard case .string(let componentId)? = dict["id"] else {
+                return component
+            }
+            // 自動 path 化
+            let path = "/__autoinput__/\(componentId)"
+            dict["value"] = .object(["path": .string(path)])
+            seeds.append((path: path, value: value))
+            return .object(dict)
+        }
+        return RepairResult(components: repaired, dataModelSeeds: seeds)
+    }
+
+    /// 値が `{"path": "..."}` 形式の path binding かどうか。
+    private static func isPathBinding(_ value: AnyCodable) -> Bool {
+        guard case .object(let dict) = value, dict.count == 1 else { return false }
+        guard case .string? = dict["path"] else { return false }
+        return true
+    }
 
     /// ターン内の全 updateComponents をスキャンして、入力 components を 1 つでも含む
     /// **元の** surfaceId のセットを返す（renames 適用前 = LLM 出力上の id）。

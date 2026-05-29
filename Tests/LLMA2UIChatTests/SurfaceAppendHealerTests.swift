@@ -118,6 +118,60 @@ struct SurfaceAppendHealerTests {
         #expect(cs.sendDataModel == false)   // 明示 false は尊重
     }
 
+    @Test("ChoicePicker.value が literal なら path 化 + updateDataModel が後続生成される")
+    func repairsLiteralChoicePickerValue() {
+        let picker: AnyCodable = .object([
+            "id": .string("picker"),
+            "component": .string("ChoicePicker"),
+            "value": .array([.string("a"), .string("b")]),
+        ])
+        let messages: [ServerMessage] = [
+            .createSurface(.init(surfaceId: "s1", catalogId: catalog)),
+            .updateComponents(.init(surfaceId: "s1", components: [picker])),
+        ]
+        let out = SurfaceAppendHealer.heal(messages, lockedIds: [], defaultCatalogId: catalog)
+        // createSurface + updateComponents(修復後) + updateDataModel(初期値)
+        #expect(out.count == 3)
+        guard case .updateComponents(let uc) = out[1],
+              case .object(let pickerOut) = uc.components[0],
+              case .object(let valueOut)? = pickerOut["value"],
+              case .string(let path)? = valueOut["path"] else {
+            Issue.record("expected path-bound value")
+            return
+        }
+        #expect(path == "/__autoinput__/picker")
+        guard case .updateDataModel(let udm) = out[2] else {
+            Issue.record("expected updateDataModel seed")
+            return
+        }
+        #expect(udm.path == "/__autoinput__/picker")
+        #expect(udm.value == .array([.string("a"), .string("b")]))
+    }
+
+    @Test("value が既に path binding なら触らない")
+    func leavesPathBindingAlone() {
+        let picker: AnyCodable = .object([
+            "id": .string("picker"),
+            "component": .string("ChoicePicker"),
+            "value": .object(["path": .string("/my_selection")]),
+        ])
+        let messages: [ServerMessage] = [
+            .createSurface(.init(surfaceId: "s1", catalogId: catalog)),
+            .updateComponents(.init(surfaceId: "s1", components: [picker])),
+        ]
+        let out = SurfaceAppendHealer.heal(messages, lockedIds: [], defaultCatalogId: catalog)
+        // createSurface + updateComponents のみ (updateDataModel seed なし)
+        #expect(out.count == 2)
+        guard case .updateComponents(let uc) = out[1],
+              case .object(let pickerOut) = uc.components[0],
+              case .object(let valueOut)? = pickerOut["value"],
+              case .string(let path)? = valueOut["path"] else {
+            Issue.record("expected unchanged path binding")
+            return
+        }
+        #expect(path == "/my_selection")
+    }
+
     @Test("入力 components を含まない surface は sendDataModel nil のまま")
     func sendDataModelStaysNilWithoutInputs() {
         let textComponent: AnyCodable = .object([
