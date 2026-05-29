@@ -30,6 +30,12 @@ import LLMTool
 ///
 /// `LLMA2UIChat` のような派生セッションは独自の healer を差し込んで append-only 等のポリシーを
 /// 実現する。
+///
+/// `existing` の意味は **「現ターン開始時点で MessageProcessor が保持していた surface id 群」**
+/// （= 過去ターン由来の surface 集合）。`A2UISession` がターン冒頭で 1 度だけ計算し、ターン内の
+/// 複数の `responsePart` に対して同じ値を渡す。同ターン内で新たに createSurface した surface は
+/// `existing` には含まれない — append-only 系の healer が "過去 surface" と誤認しないようにする
+/// ためのコントラクト。
 public protocol A2UIServerMessageHealer: Sendable {
     @MainActor
     func heal(_ messages: [ServerMessage], existing: Set<String>) -> [ServerMessage]
@@ -136,6 +142,13 @@ public final class A2UISession<Client: AgentCapableClient> where Client.Model: S
         return AsyncThrowingStream { continuation in
             Task { @MainActor [weak self] in
                 do {
+                    // ターン開始時点の surface ids を固定。
+                    // responsePart はストリーミングで複数回に分割されることがあり、part #N で
+                    // 作成した surface を part #N+1 の healer が "過去 surface" と誤認すると
+                    // append-only 系の fork ロジックが暴発する（例: createSurface(X) → updateComponents(X)
+                    // が分割されたとき X-2 が生成される）。これを防ぐためにターン全体で固定値を使う。
+                    let turnLockedIds = Set(messageProcessor.surfaces.keys)
+
                     var messages = history
                     if let ctx = Self.buildDataModelContext(processor: messageProcessor) {
                         messages.append(.user(ctx))
@@ -165,8 +178,7 @@ public final class A2UISession<Client: AgentCapableClient> where Client.Model: S
                                 continuation.yield(.text(text))
                             }
                             if let serverMessages = part.messages {
-                                let existing = Set(messageProcessor.surfaces.keys)
-                                let healed = healer.heal(serverMessages, existing: existing)
+                                let healed = healer.heal(serverMessages, existing: turnLockedIds)
                                 _ = messageProcessor.process(healed)
                                 for serverMessage in healed {
                                     continuation.yield(.surfaceUpdated(Self.extractSurfaceId(from: serverMessage)))
