@@ -5,8 +5,10 @@ import A2UICore
 /// 入力された `[ServerMessage]` バッチを 1 ターン分とみなし、以下を適用する:
 ///
 /// 1. `createSurface`: 既存 / 同ターン内 と衝突する id は fresh id にリネーム。
-///    `sendDataModel` は LLM 出力をそのまま透過（spec 準拠。ChoicePicker 等の入力値を
-///    次ターンの LLM に届けるために必要）。
+///    `sendDataModel` は LLM 出力をそのまま透過（spec 準拠）するが、**ターン内に同 surface
+///    の入力 components (TextField / CheckBox / Slider / ChoicePicker / DateTimeInput) が
+///    含まれていて、かつ LLM が `sendDataModel` を未指定 (nil) の場合は true に default 化** する。
+///    LLM が明示的に false にしているケースは尊重する。
 /// 2. `updateComponents`:
 ///    - 同ターン内で `createSurface` 済みの id を対象 → そのまま通す
 ///    - 過去ターンで作られた id（= `lockedIds`）を対象 → `createSurface` を**直前に挿入**して
@@ -20,11 +22,26 @@ import A2UICore
 /// `defaultCatalogId` は 2 の暗黙 fork で生成する `createSurface` の `catalogId` に使う。
 internal enum SurfaceAppendHealer {
 
+    /// A2UI v0.9 basic catalog の入力 components 名。
+    /// これらが含まれる surface は ユーザー入力を agent に届ける必要があるため、
+    /// `sendDataModel` を true に default 化する。
+    private static let inputComponentNames: Set<String> = [
+        "TextField",
+        "CheckBox",
+        "Slider",
+        "ChoicePicker",
+        "DateTimeInput",
+    ]
+
     static func heal(
         _ messages: [ServerMessage],
         lockedIds: Set<String>,
         defaultCatalogId: String
     ) -> [ServerMessage] {
+        // Pass 1: 入力 components を含む original surfaceId を集める
+        let surfacesWithInputs = collectSurfacesWithInputs(messages)
+
+        // Pass 2: メッセージを書き換える
         var renames: [String: String] = [:]
         var createdThisTurn: Set<String> = []
         var taken = lockedIds
@@ -42,11 +59,19 @@ internal enum SurfaceAppendHealer {
                 }
                 taken.insert(resolved)
                 createdThisTurn.insert(resolved)
+
+                // sendDataModel が未指定の場合のみ、入力 components 有無に応じて true に default 化。
+                // 明示的な true / false はそのまま尊重する。
+                let resolvedSendDataModel: Bool? = {
+                    if cs.sendDataModel != nil { return cs.sendDataModel }
+                    return surfacesWithInputs.contains(original) ? true : nil
+                }()
+
                 out.append(.createSurface(CreateSurface(
                     surfaceId: resolved,
                     catalogId: cs.catalogId,
                     theme: cs.theme,
-                    sendDataModel: cs.sendDataModel   // LLM 出力をそのまま透過 (spec 準拠)
+                    sendDataModel: resolvedSendDataModel
                 )))
 
             case .updateComponents(let uc):
@@ -66,11 +91,14 @@ internal enum SurfaceAppendHealer {
                     renames[uc.surfaceId] = forkId
                     taken.insert(forkId)
                     createdThisTurn.insert(forkId)
+                    // fork で生成する createSurface も、original 側に入力があれば true 化
+                    let forkSendDataModel: Bool? =
+                        surfacesWithInputs.contains(uc.surfaceId) ? true : nil
                     out.append(.createSurface(CreateSurface(
                         surfaceId: forkId,
                         catalogId: defaultCatalogId,
                         theme: nil,
-                        sendDataModel: nil   // 暗黙 fork 時は spec default に従う
+                        sendDataModel: forkSendDataModel
                     )))
                     out.append(.updateComponents(UpdateComponents(
                         surfaceId: forkId, components: uc.components
@@ -101,6 +129,34 @@ internal enum SurfaceAppendHealer {
         }
 
         return out
+    }
+
+    // MARK: - Internal
+
+    /// ターン内の全 updateComponents をスキャンして、入力 components を 1 つでも含む
+    /// **元の** surfaceId のセットを返す（renames 適用前 = LLM 出力上の id）。
+    private static func collectSurfacesWithInputs(_ messages: [ServerMessage]) -> Set<String> {
+        var result: Set<String> = []
+        for message in messages {
+            guard case .updateComponents(let uc) = message else { continue }
+            for component in uc.components {
+                if componentContainsInput(component) {
+                    result.insert(uc.surfaceId)
+                    break
+                }
+            }
+        }
+        return result
+    }
+
+    /// 1 つの component 値が入力 component を表すか判定する。
+    /// component の表現は `{"component": "ChoicePicker", ...}` の object 形式が basic catalog では標準。
+    private static func componentContainsInput(_ value: AnyCodable) -> Bool {
+        guard case .object(let dict) = value else { return false }
+        if case .string(let name)? = dict["component"], inputComponentNames.contains(name) {
+            return true
+        }
+        return false
     }
 
     private static func freshId(_ original: String, taken: Set<String>) -> String {

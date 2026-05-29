@@ -80,6 +80,63 @@ struct SurfaceAppendHealerTests {
         #expect(cs3.sendDataModel == nil)
     }
 
+    @Test("入力 components を含む surface は sendDataModel が nil → true に default 化される")
+    func sendDataModelAutoTrueForInputs() {
+        let pickerComponent: AnyCodable = .object([
+            "id": .string("picker"),
+            "component": .string("ChoicePicker"),
+            "options": .array([]),
+            "value": .object(["path": .string("/sel")]),
+        ])
+        let messages: [ServerMessage] = [
+            .createSurface(.init(surfaceId: "form", catalogId: catalog)),  // nil
+            .updateComponents(.init(surfaceId: "form", components: [pickerComponent])),
+        ]
+        let out = SurfaceAppendHealer.heal(messages, lockedIds: [], defaultCatalogId: catalog)
+        guard case .createSurface(let cs) = out[0] else {
+            Issue.record("expected createSurface")
+            return
+        }
+        #expect(cs.sendDataModel == true)
+    }
+
+    @Test("入力 components を含む surface でも、明示 false は尊重")
+    func sendDataModelExplicitFalseRespected() {
+        let pickerComponent: AnyCodable = .object([
+            "id": .string("picker"),
+            "component": .string("ChoicePicker"),
+        ])
+        let messages: [ServerMessage] = [
+            .createSurface(.init(surfaceId: "form", catalogId: catalog, sendDataModel: false)),
+            .updateComponents(.init(surfaceId: "form", components: [pickerComponent])),
+        ]
+        let out = SurfaceAppendHealer.heal(messages, lockedIds: [], defaultCatalogId: catalog)
+        guard case .createSurface(let cs) = out[0] else {
+            Issue.record("expected createSurface")
+            return
+        }
+        #expect(cs.sendDataModel == false)   // 明示 false は尊重
+    }
+
+    @Test("入力 components を含まない surface は sendDataModel nil のまま")
+    func sendDataModelStaysNilWithoutInputs() {
+        let textComponent: AnyCodable = .object([
+            "id": .string("t"),
+            "component": .string("Text"),
+            "text": .string("hello"),
+        ])
+        let messages: [ServerMessage] = [
+            .createSurface(.init(surfaceId: "display", catalogId: catalog)),
+            .updateComponents(.init(surfaceId: "display", components: [textComponent])),
+        ]
+        let out = SurfaceAppendHealer.heal(messages, lockedIds: [], defaultCatalogId: catalog)
+        guard case .createSurface(let cs) = out[0] else {
+            Issue.record("expected createSurface")
+            return
+        }
+        #expect(cs.sendDataModel == nil)
+    }
+
     @Test("過去 surface への updateDataModel は drop")
     func updateDataModelPastDropped() {
         let messages: [ServerMessage] = [
