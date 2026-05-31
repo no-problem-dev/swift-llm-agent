@@ -1,4 +1,5 @@
 import Foundation
+import StructuredDataCore
 import JSONParsing
 #if canImport(FoundationNetworking)
 import FoundationNetworking
@@ -260,8 +261,8 @@ public struct A2AAgent: A2AAgentProtocol {
                 let text: String
                 if argumentsData.isEmpty {
                     text = ""
-                } else if let json = try? JSONParser().parse(argumentsData),
-                          let message = json.string("message") {
+                } else if let args = try? JSONParser().parse(argumentsData).decode(A2AMessageArguments.self),
+                          let message = args.message {
                     text = message
                 } else {
                     text = String(data: argumentsData, encoding: .utf8) ?? ""
@@ -297,4 +298,11 @@ public struct A2AAgent: A2AAgentProtocol {
     private func createAdapter() -> A2AClientAdapter {
         A2AClientAdapter(url: agentURL, authentication: authentication, timeout: timeout)
     }
+}
+
+// MARK: - Tool Argument DTO
+
+/// A2A スキルツールの引数。文字列キーはこの型の ``CodingKeys`` に封じ込める。
+private struct A2AMessageArguments: Decodable {
+    let message: String?
 }

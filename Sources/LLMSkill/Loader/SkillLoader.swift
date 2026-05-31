@@ -105,17 +105,24 @@ public enum SkillLoader {
             throw SkillError.parseError(error.localizedDescription)
         }
 
+        let fields: Fields
+        do {
+            fields = try frontmatter.decode(Fields.self)
+        } catch {
+            throw SkillError.parseError("Invalid SKILL.md frontmatter: \(error)")
+        }
+
         // 必須フィールド
-        guard let name = frontmatter.string("name") else {
+        guard let name = fields.name else {
             throw SkillError.missingRequiredField("name")
         }
-        guard let description = frontmatter.string("description") else {
+        guard let description = fields.description else {
             throw SkillError.missingRequiredField("description")
         }
 
         // 実行モード（context フィールド）
         let executionMode: SkillExecutionMode
-        if let contextStr = frontmatter.string("context") {
+        if let contextStr = fields.context {
             guard let mode = SkillExecutionMode(rawValue: contextStr) else {
                 throw SkillError.invalidExecutionMode(contextStr)
             }
@@ -124,23 +131,14 @@ public enum SkillLoader {
             executionMode = .inline
         }
 
-        // 許可ツール
-        let allowedTools = frontmatter.stringArray("allowed-tools")
-
         // fork スキルには allowed-tools を必須化
-        if executionMode == .fork && allowedTools == nil {
+        if executionMode == .fork && fields.allowedTools == nil {
             throw SkillError.missingAllowedToolsForFork(name)
         }
 
-        // 表示メタデータ
-        let displayName = frontmatter.string("display-name")
-        let iconName = frontmatter.string("icon") ?? "sparkles"
-        let category = frontmatter.string("category")
-        let displayOrder = frontmatter.int("display-order") ?? 999
-
         // 利用可能性
         let availability: SkillAvailability
-        if let availStr = frontmatter.string("availability") {
+        if let availStr = fields.availability {
             guard let parsed = SkillAvailability(rawValue: availStr) else {
                 throw SkillError.invalidAvailability(availStr)
             }
@@ -150,8 +148,8 @@ public enum SkillLoader {
         }
 
         // 呼び出し制御
-        let isUserInvocable = frontmatter.bool("user-invocable") ?? true
-        let disableModel = frontmatter.bool("disable-model-invocation") ?? false
+        let isUserInvocable = fields.userInvocable ?? true
+        let disableModel = fields.disableModelInvocation ?? false
         let invocationMode: SkillInvocationMode
         if isUserInvocable && !disableModel {
             invocationMode = .both
@@ -164,47 +162,31 @@ public enum SkillLoader {
             invocationMode = .none
         }
 
-        let argumentHint = frontmatter.string("argument-hint")
-        let isEphemeral = frontmatter.bool("ephemeral") ?? false
-
-        // メタデータ
-        let license = frontmatter.string("license")
-        let compatibility = frontmatter.string("compatibility")
-        let version = frontmatter.string("version")
-        let author = frontmatter.string("author")
-        let tags = frontmatter.stringArray("tags")
-
         var metadata: SkillMetadata? = nil
-        if license != nil || compatibility != nil || version != nil || author != nil || tags != nil {
+        if fields.license != nil || fields.compatibility != nil || fields.version != nil
+            || fields.author != nil || fields.tags != nil {
             metadata = SkillMetadata(
-                license: license,
-                compatibility: compatibility,
-                version: version,
-                author: author,
-                tags: tags
+                license: fields.license,
+                compatibility: fields.compatibility,
+                version: fields.version,
+                author: fields.author,
+                tags: fields.tags
             )
         }
 
         // AgentConfiguration（maxSteps をフロントマターから読む）
         var configuration = AgentConfiguration.default
-        if let maxSteps = frontmatter.int("max-steps") {
+        if let maxSteps = fields.maxSteps {
             configuration = AgentConfiguration(maxSteps: maxSteps)
         }
 
         // モデルティア（整数 or light/standard/powerful の文字列）
         let modelTier: ModelTier
-        if let tierInt = frontmatter.int("model-tier") {
-            guard let tier = ModelTier(rawValue: tierInt) else {
-                throw SkillError.invalidModelTier(String(tierInt))
+        if let spec = fields.modelTier {
+            guard let resolved = spec.resolved else {
+                throw SkillError.invalidModelTier(spec.description)
             }
-            modelTier = tier
-        } else if let tierValue = frontmatter.string("model-tier") {
-            switch tierValue.lowercased() {
-            case "light": modelTier = .light
-            case "standard": modelTier = .standard
-            case "powerful": modelTier = .powerful
-            default: throw SkillError.invalidModelTier(tierValue)
-            }
+            modelTier = resolved
         } else {
             modelTier = .standard
         }
@@ -220,18 +202,56 @@ public enum SkillLoader {
             description: description,
             executionMode: executionMode,
             instructions: instructions,
-            allowedTools: allowedTools,
+            allowedTools: fields.allowedTools,
             configuration: configuration,
             availability: availability,
-            displayName: displayName,
-            iconName: iconName,
-            category: category,
-            displayOrder: displayOrder,
+            displayName: fields.displayName,
+            iconName: fields.icon ?? "sparkles",
+            category: fields.category,
+            displayOrder: fields.displayOrder ?? 999,
             invocationMode: invocationMode,
-            argumentHint: argumentHint,
+            argumentHint: fields.argumentHint,
             metadata: metadata,
             modelTier: modelTier,
-            isEphemeral: isEphemeral
+            isEphemeral: fields.ephemeral ?? false
         )
+    }
+
+    /// SKILL.md フロントマターの型付き表現。文字列キーは ``CodingKeys`` の一箇所に封じ込め、
+    /// ロジックは型安全なプロパティ参照のみで扱う。
+    private struct Fields: Decodable {
+        let name: String?
+        let description: String?
+        let context: String?
+        let allowedTools: [String]?
+        let displayName: String?
+        let icon: String?
+        let category: String?
+        let displayOrder: Int?
+        let availability: String?
+        let userInvocable: Bool?
+        let disableModelInvocation: Bool?
+        let argumentHint: String?
+        let ephemeral: Bool?
+        let license: String?
+        let compatibility: String?
+        let version: String?
+        let author: String?
+        let tags: [String]?
+        let maxSteps: Int?
+        let modelTier: ModelTier.Spec?
+
+        enum CodingKeys: String, CodingKey {
+            case name, description, context, icon, category, availability, ephemeral
+            case license, compatibility, version, author, tags
+            case allowedTools = "allowed-tools"
+            case displayName = "display-name"
+            case displayOrder = "display-order"
+            case userInvocable = "user-invocable"
+            case disableModelInvocation = "disable-model-invocation"
+            case argumentHint = "argument-hint"
+            case maxSteps = "max-steps"
+            case modelTier = "model-tier"
+        }
     }
 }

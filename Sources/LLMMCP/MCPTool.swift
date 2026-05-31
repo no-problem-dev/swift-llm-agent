@@ -85,19 +85,14 @@ extension MCPTool {
         json: StructuredValue,
         executeHandler: @escaping @Sendable (Data) async throws -> ToolResult
     ) -> MCPTool? {
-        guard let name = json.string("name"),
-              let description = json.string("description") else {
+        guard let definition = try? json.decode(ToolDefinitionDTO.self),
+              let name = definition.name,
+              let description = definition.description else {
             return nil
         }
 
-        // inputSchemaをパース
-        let inputSchema: JSONSchema
-        if json.has("inputSchema") {
-            inputSchema = parseJSONSchema(from: json["inputSchema"])
-        } else {
-            // スキーマがない場合は空のオブジェクト
-            inputSchema = .object(properties: [:], required: [])
-        }
+        // inputSchema は JSONSchema へ直接デコード（無ければ空オブジェクト）
+        let inputSchema = definition.inputSchema ?? .object(properties: [:], required: [])
 
         // 能力フラグをヒューリスティックに推測
         let capabilities = inferCapabilities(from: name, description: description)
@@ -126,49 +121,13 @@ extension MCPTool {
 
         return MCPToolCapabilities.from(isReadOnly: isReadOnly, isDangerous: isDangerous)
     }
+}
 
-    /// JSON値からJSONSchemaを構築
-    private static func parseJSONSchema(from value: StructuredValue) -> JSONSchema {
-        guard let type = value.string("type") else {
-            return .object(description: nil, properties: [:], required: [])
-        }
+// MARK: - MCP Tool Definition DTO
 
-        let description = value.string("description")
-
-        switch type {
-        case "object":
-            var properties: [String: JSONSchema] = [:]
-            if let props = value.object("properties") {
-                for (key, propValue) in props {
-                    properties[key] = parseJSONSchema(from: propValue)
-                }
-            }
-            let required = value.stringArray("required") ?? []
-            return .object(description: description, properties: properties, required: required)
-
-        case "string":
-            if let enumValues = value.stringArray("enum") {
-                return .string(description: description, enum: enumValues)
-            }
-            return .string(description: description)
-
-        case "integer":
-            return .integer(description: description)
-
-        case "number":
-            return .number(description: description)
-
-        case "boolean":
-            return .boolean(description: description)
-
-        case "array":
-            if value.has("items") {
-                return .array(description: description, items: parseJSONSchema(from: value["items"]))
-            }
-            return .array(description: description, items: .string())
-
-        default:
-            return .object(description: nil, properties: [:], required: [])
-        }
-    }
+/// MCP ツール定義 JSON の型付き表現。`inputSchema` は ``JSONSchema`` へ直接デコードされる。
+private struct ToolDefinitionDTO: Decodable {
+    let name: String?
+    let description: String?
+    let inputSchema: JSONSchema?
 }

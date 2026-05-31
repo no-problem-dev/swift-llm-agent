@@ -179,73 +179,11 @@ internal actor SDKClientAdapter {
         }
     }
 
-    /// MCP.ValueをJSONSchemaに変換
+    /// MCP SDK の `Value` 形式のスキーマを ``JSONSchema`` へ変換する。
+    /// `Value` は Encodable なので structured-data 経由で JSONSchema へ直接デコードする。
     private func convertValueToJSONSchema(_ value: MCP.Value) -> JSONSchema {
-        guard case .object(let dict) = value else {
-            return .object(properties: [:], required: [])
-        }
-
-        // typeを取得
-        guard case .string(let typeStr) = dict["type"] else {
-            return .object(properties: [:], required: [])
-        }
-
-        let description: String?
-        if case .string(let desc) = dict["description"] {
-            description = desc
-        } else {
-            description = nil
-        }
-
-        switch typeStr {
-        case "object":
-            var properties: [String: JSONSchema] = [:]
-            if case .object(let propsDict) = dict["properties"] {
-                for (key, propValue) in propsDict {
-                    properties[key] = convertValueToJSONSchema(propValue)
-                }
-            }
-
-            var required: [String] = []
-            if case .array(let reqArray) = dict["required"] {
-                for item in reqArray {
-                    if case .string(let reqStr) = item {
-                        required.append(reqStr)
-                    }
-                }
-            }
-
-            return .object(description: description, properties: properties, required: required)
-
-        case "string":
-            var enumValues: [String]? = nil
-            if case .array(let enumArray) = dict["enum"] {
-                enumValues = enumArray.compactMap { value in
-                    if case .string(let str) = value { return str }
-                    return nil
-                }
-            }
-            return .string(description: description, enum: enumValues)
-
-        case "integer":
-            return .integer(description: description)
-
-        case "number":
-            return .number(description: description)
-
-        case "boolean":
-            return .boolean(description: description)
-
-        case "array":
-            var itemSchema: JSONSchema = .string()
-            if let items = dict["items"] {
-                itemSchema = convertValueToJSONSchema(items)
-            }
-            return .array(description: description, items: itemSchema)
-
-        default:
-            return .object(description: description, properties: [:], required: [])
-        }
+        (try? StructuredValue.encoding(value).decode(JSONSchema.self))
+            ?? .object(properties: [:], required: [])
     }
 
     /// DataをMCP.Valueの辞書に変換

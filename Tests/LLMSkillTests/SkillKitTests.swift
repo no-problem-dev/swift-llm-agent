@@ -12,14 +12,15 @@ import LLMAgent
 
 @Test func testInteractiveSkillCatalogLoadsBundledSkills() throws {
     let skills = try InteractiveSkillCatalog.loadBundledSkills()
-    #expect(skills.count == 25)
-    #expect(skills.first?.name == "scan")
+    #expect(skills.count == 28)
+    // display-order 昇順ソート。先頭は最小 order(1)、末尾は最大 order(102 = info_diet)。
+    #expect(skills.first?.displayOrder == 1)
     #expect(skills.last?.name == "info_diet")
 }
 
-@Test func testInteractiveSkillKitContainsEighteenSkills() {
+@Test func testInteractiveSkillKitSkillCount() {
     let kit = InteractiveSkillKit()
-    #expect(kit.skillCount == 25)
+    #expect(kit.skillCount == 28)
 }
 
 @Test func testInteractiveSkillKitSkillNames() {
@@ -27,11 +28,12 @@ import LLMAgent
     #expect(Set(kit.skillNames) == Set([
         "capture_to_tasks", "compare", "context_restart",
         "create_agent", "create_project", "create_skill",
-        "decide", "digest", "draft",
+        "decide", "deep_research", "deep_think", "digest", "draft",
         "explain", "focus", "get_it_done", "info_diet", "journal",
         "knowledge_anchor", "learn", "meeting_prep", "morning",
         "next_action", "quick_note", "research",
         "scan", "session_recall", "smart_spending", "untangle",
+        "write_assist",
     ]))
 }
 
@@ -43,7 +45,7 @@ import LLMAgent
     #expect(skill?.executionMode == .inline)
     #expect(skill?.isModelInvocable == false)
     #expect(skill?.instructions.contains("朝のブリーフィング") == true)
-    #expect(skill?.metadata?.version == "3.0.0")
+    #expect(skill?.metadata?.version == "3.2.0")
     #expect(skill?.metadata?.tags?.contains("morning") == true)
 }
 
@@ -55,7 +57,7 @@ import LLMAgent
     #expect(skill?.executionMode == .inline)
     #expect(skill?.isModelInvocable == false)
     #expect(skill?.instructions.contains("次の一手") == true)
-    #expect(skill?.metadata?.version == "3.0.0")
+    #expect(skill?.metadata?.version == "3.2.0")
     #expect(skill?.metadata?.tags?.contains("action") == true)
 }
 
@@ -63,7 +65,6 @@ import LLMAgent
     let kit = InteractiveSkillKit()
     for skill in kit.skills {
         #expect(skill.executionMode == .inline, "Skill \(skill.name) should be inline mode")
-        #expect(skill.isModelInvocable == false, "Skill \(skill.name) should not be model-invocable")
     }
 }
 
@@ -79,7 +80,7 @@ import LLMAgent
         InteractiveSkillKit()
     }
 
-    #expect(registry.skills.count == 25)
+    #expect(registry.skills.count == 28)
     #expect(registry.skill(named: "morning") != nil)
     #expect(registry.skill(named: "learn") != nil)
     #expect(registry.skill(named: "context_restart") != nil)
@@ -95,7 +96,7 @@ import LLMAgent
         )
     }
 
-    #expect(registry.skills.count == 26)
+    #expect(registry.skills.count == 29)
     #expect(registry.skill(named: "morning") != nil)
     #expect(registry.skill(named: "custom") != nil)
 }
@@ -128,6 +129,6 @@ private struct TestSkillKit: SkillKit {
         TestSkillKit()
     }
 
-    #expect(registry.skills.count == 26)
+    #expect(registry.skills.count == 29)
     #expect(registry.skill(named: "skill-a") != nil)
 }

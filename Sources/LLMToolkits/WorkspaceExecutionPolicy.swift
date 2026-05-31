@@ -97,15 +97,10 @@ public struct WorkspaceExecutionPolicy: ToolExecutionPolicy {
 
     /// ツール呼び出しからパスを抽出
     private func extractPaths(from call: ToolCall) -> [String] {
-        guard let json = try? JSONParser().parse(call.arguments) else {
+        guard let args = try? JSONParser().parse(call.arguments).decode(PathArguments.self) else {
             return []
         }
-
-        var paths: [String] = []
-        if let path = json.string("path") { paths.append(path) }
-        if let source = json.string("source") { paths.append(source) }
-        if let destination = json.string("destination") { paths.append(destination) }
-        return paths
+        return [args.path, args.source, args.destination].compactMap { $0 }
     }
 
     /// パスを絶対パスに解決
@@ -129,4 +124,12 @@ public struct WorkspaceExecutionPolicy: ToolExecutionPolicy {
         }
         return false
     }
+}
+
+/// ファイル操作系ツールの引数からパスを抽出するための DTO。
+/// 文字列キーは ``CodingKeys`` 既定（プロパティ名一致）に封じ込める。
+private struct PathArguments: Decodable {
+    let path: String?
+    let source: String?
+    let destination: String?
 }

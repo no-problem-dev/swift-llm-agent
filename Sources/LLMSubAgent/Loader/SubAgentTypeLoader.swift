@@ -107,44 +107,40 @@ public enum SubAgentTypeLoader {
             throw SubAgentLoaderError.missingRequiredField("frontmatter: \(error.localizedDescription)")
         }
 
+        let fields: Fields
+        do {
+            fields = try frontmatter.decode(Fields.self)
+        } catch {
+            throw SubAgentLoaderError.missingRequiredField("frontmatter: \(error)")
+        }
+
         // 必須フィールド
-        guard let name = frontmatter.string("name") else {
+        guard let name = fields.name else {
             throw SubAgentLoaderError.missingRequiredField("name")
         }
-        guard let description = frontmatter.string("description") else {
+        guard let description = fields.description else {
             throw SubAgentLoaderError.missingRequiredField("description")
         }
 
         // 許可ツール（必須）
-        guard let allowedTools = frontmatter.stringArray("allowed-tools") else {
+        guard let allowedTools = fields.allowedTools else {
             throw SubAgentLoaderError.missingAllowedTools(name)
         }
 
-        // UI 表示用フィールド（オプション）
-        let displayName = frontmatter.string("display-name")
-        let iconName = frontmatter.string("icon")
-
         // モデルティア（整数 or light/standard/powerful の文字列）
         let modelTier: ModelTier
-        if let tierInt = frontmatter.int("model-tier") {
-            guard let tier = ModelTier(rawValue: tierInt) else {
-                throw SubAgentLoaderError.invalidModelTier(String(tierInt))
+        if let spec = fields.modelTier {
+            guard let resolved = spec.resolved else {
+                throw SubAgentLoaderError.invalidModelTier(spec.description)
             }
-            modelTier = tier
-        } else if let tierValue = frontmatter.string("model-tier") {
-            switch tierValue.lowercased() {
-            case "light": modelTier = .light
-            case "standard": modelTier = .standard
-            case "powerful": modelTier = .powerful
-            default: throw SubAgentLoaderError.invalidModelTier(tierValue)
-            }
+            modelTier = resolved
         } else {
             modelTier = .standard
         }
 
         // AgentConfiguration（maxSteps をフロントマターから読む）
         var configuration = AgentConfiguration.default
-        if let maxSteps = frontmatter.int("max-steps") {
+        if let maxSteps = fields.maxSteps {
             configuration = AgentConfiguration(maxSteps: maxSteps)
         }
 
@@ -159,12 +155,31 @@ public enum SubAgentTypeLoader {
         return SubAgentTypeDefinition(
             name: name,
             description: description,
-            displayName: displayName,
-            iconName: iconName,
+            displayName: fields.displayName,
+            iconName: fields.icon,
             allowedTools: allowedTools,
             systemPrompt: systemPrompt,
             configuration: configuration,
             modelTier: modelTier
         )
+    }
+
+    /// AGENT.md フロントマターの型付き表現。文字列キーは ``CodingKeys`` の一箇所に封じ込める。
+    private struct Fields: Decodable {
+        let name: String?
+        let description: String?
+        let allowedTools: [String]?
+        let displayName: String?
+        let icon: String?
+        let maxSteps: Int?
+        let modelTier: ModelTier.Spec?
+
+        enum CodingKeys: String, CodingKey {
+            case name, description, icon
+            case allowedTools = "allowed-tools"
+            case displayName = "display-name"
+            case maxSteps = "max-steps"
+            case modelTier = "model-tier"
+        }
     }
 }
