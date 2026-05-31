@@ -144,8 +144,8 @@ internal enum SurfaceAppendHealer {
     /// `repairLiteralInputValues` の結果。修復後の components と、初期値を書き戻すための
     /// `updateDataModel` 種を返す。
     fileprivate struct RepairResult {
-        let components: [AnyCodable]
-        let dataModelSeeds: [(path: String, value: AnyCodable)]
+        let components: [StructuredValue]
+        let dataModelSeeds: [(path: String, value: StructuredValue)]
     }
 
     /// `updateComponents.components` 内の入力 components の `value` が literal (path binding でない)
@@ -156,9 +156,9 @@ internal enum SurfaceAppendHealer {
     /// agent にも届くようになる。
     ///
     /// すでに `{path: ...}` で書かれているものは LLM の意思を尊重して触らない。
-    fileprivate static func repairLiteralInputValues(_ components: [AnyCodable]) -> RepairResult {
-        var seeds: [(path: String, value: AnyCodable)] = []
-        let repaired = components.map { component -> AnyCodable in
+    fileprivate static func repairLiteralInputValues(_ components: [StructuredValue]) -> RepairResult {
+        var seeds: [(path: String, value: StructuredValue)] = []
+        let repaired = components.map { component -> StructuredValue in
             guard case .object(var dict) = component,
                   case .string(let componentName)? = dict["component"],
                   inputComponentNames.contains(componentName) else {
@@ -182,7 +182,7 @@ internal enum SurfaceAppendHealer {
     }
 
     /// 値が `{"path": "..."}` 形式の path binding かどうか。
-    private static func isPathBinding(_ value: AnyCodable) -> Bool {
+    private static func isPathBinding(_ value: StructuredValue) -> Bool {
         guard case .object(let dict) = value, dict.count == 1 else { return false }
         guard case .string? = dict["path"] else { return false }
         return true
@@ -206,7 +206,7 @@ internal enum SurfaceAppendHealer {
 
     /// 1 つの component 値が入力 component を表すか判定する。
     /// component の表現は `{"component": "ChoicePicker", ...}` の object 形式が basic catalog では標準。
-    private static func componentContainsInput(_ value: AnyCodable) -> Bool {
+    private static func componentContainsInput(_ value: StructuredValue) -> Bool {
         guard case .object(let dict) = value else { return false }
         if case .string(let name)? = dict["component"], inputComponentNames.contains(name) {
             return true

@@ -82,7 +82,7 @@ struct SurfaceAppendHealerTests {
 
     @Test("入力 components を含む surface は sendDataModel が nil → true に default 化される")
     func sendDataModelAutoTrueForInputs() {
-        let pickerComponent: AnyCodable = .object([
+        let pickerComponent: StructuredValue = .object([
             "id": .string("picker"),
             "component": .string("ChoicePicker"),
             "options": .array([]),
@@ -102,7 +102,7 @@ struct SurfaceAppendHealerTests {
 
     @Test("入力 components を含む surface でも、明示 false は尊重")
     func sendDataModelExplicitFalseRespected() {
-        let pickerComponent: AnyCodable = .object([
+        let pickerComponent: StructuredValue = .object([
             "id": .string("picker"),
             "component": .string("ChoicePicker"),
         ])
@@ -120,7 +120,7 @@ struct SurfaceAppendHealerTests {
 
     @Test("ChoicePicker.value が literal なら path 化 + updateDataModel が後続生成される")
     func repairsLiteralChoicePickerValue() {
-        let picker: AnyCodable = .object([
+        let picker: StructuredValue = .object([
             "id": .string("picker"),
             "component": .string("ChoicePicker"),
             "value": .array([.string("a"), .string("b")]),
@@ -150,7 +150,7 @@ struct SurfaceAppendHealerTests {
 
     @Test("value が既に path binding なら触らない")
     func leavesPathBindingAlone() {
-        let picker: AnyCodable = .object([
+        let picker: StructuredValue = .object([
             "id": .string("picker"),
             "component": .string("ChoicePicker"),
             "value": .object(["path": .string("/my_selection")]),
@@ -174,7 +174,7 @@ struct SurfaceAppendHealerTests {
 
     @Test("入力 components を含まない surface は sendDataModel nil のまま")
     func sendDataModelStaysNilWithoutInputs() {
-        let textComponent: AnyCodable = .object([
+        let textComponent: StructuredValue = .object([
             "id": .string("t"),
             "component": .string("Text"),
             "text": .string("hello"),

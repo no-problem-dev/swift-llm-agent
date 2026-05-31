@@ -212,7 +212,7 @@ public final class A2UISession<Client: AgentCapableClient> where Client.Model: S
             return nil
         }
 
-        var context: [String: AnyCodable] = [:]
+        var context: [String: StructuredValue] = [:]
         for surface in active {
             context[surface.id] = surface.dataModel.snapshot
         }
