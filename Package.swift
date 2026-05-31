@@ -21,7 +21,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/no-problem-dev/swift-agent-communication.git", from: "1.1.0"),
         .package(url: "https://github.com/no-problem-dev/swift-llm-client.git", from: "3.0.0"),
-        .package(url: "https://github.com/no-problem-dev/swift-a2a.git", from: "0.2.0"),
+        .package(url: "https://github.com/no-problem-dev/swift-a2a.git", from: "0.3.0"),
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.1"),
         .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.6.0"),
         .package(url: "https://github.com/no-problem-dev/swift-a2ui.git", from: "0.7.2"),
@@ -118,7 +118,9 @@ let package = Package(
             .product(name: "LLMTool", package: "swift-llm-client"),
         ]),
         .target(name: "LLMA2A", dependencies: [
-            .product(name: "A2A", package: "swift-a2a"),
+            .product(name: "A2ACore", package: "swift-a2a"),
+            .product(name: "A2AClientJSONRPC", package: "swift-a2a"),
+            .product(name: "A2AClientREST", package: "swift-a2a"),
             .product(name: "LLMClient", package: "swift-llm-client"),
             .product(name: "LLMTool", package: "swift-llm-client"),
             .product(name: "StructuredDataCore", package: "swift-structured-data"),

@@ -24,7 +24,7 @@ import Testing
 @Test func a2aTaskInfoProperties() {
     let taskInfo = A2ATaskInfo(
         id: "task-1",
-        state: "completed",
+        state: .completed,
         statusMessage: "Done",
         artifactTexts: ["Result 1", "Result 2"]
     )
@@ -36,7 +36,7 @@ import Testing
 }
 
 @Test func a2aTaskInfoFailedState() {
-    let taskInfo = A2ATaskInfo(id: "task-2", state: "failed")
+    let taskInfo = A2ATaskInfo(id: "task-2", state: .failed)
 
     #expect(taskInfo.isFailed)
     #expect(!taskInfo.isCompleted)
@@ -61,4 +61,39 @@ import Testing
     #expect(info.skills.count == 2)
     #expect(info.supportsStreaming)
     #expect(!info.supportsPushNotifications)
+}
+
+@Test func a2aTaskStateTerminal() {
+    #expect(A2ATaskState.rejected.isTerminal)
+    #expect(A2ATaskState.completed.isTerminal)
+    #expect(!A2ATaskState.working.isTerminal)
+    #expect(!A2ATaskState.inputRequired.isTerminal)
+}
+
+@Test func a2aTaskInfoCarriesContextId() {
+    let taskInfo = A2ATaskInfo(id: "t", contextId: "ctx-1", state: .working)
+    #expect(taskInfo.contextId == "ctx-1")
+    #expect(!taskInfo.isCompleted)
+}
+
+@Test func a2aSendResultTaskVariant() {
+    let result = A2ASendResult.task(
+        A2ATaskInfo(id: "t", contextId: "ctx-1", state: .completed, statusMessage: "Done")
+    )
+    #expect(result.responseText == "Done")
+    #expect(!result.isFailed)
+    #expect(result.contextId == "ctx-1")
+    #expect(result.task?.id == "t")
+    #expect(result.message == nil)
+}
+
+@Test func a2aSendResultMessageVariant() {
+    let result = A2ASendResult.message(
+        A2AMessageInfo(messageId: "m", contextId: "ctx-2", text: "hi")
+    )
+    #expect(result.responseText == "hi")
+    #expect(!result.isFailed)
+    #expect(result.contextId == "ctx-2")
+    #expect(result.task == nil)
+    #expect(result.message?.messageId == "m")
 }

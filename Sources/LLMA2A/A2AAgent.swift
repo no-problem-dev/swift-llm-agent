@@ -26,8 +26,8 @@ public protocol A2AAgentProtocol: Sendable {
     /// エージェントのスキルをツールとして取得
     func fetchTools() async throws -> [A2AAgentTool]
 
-    /// メッセージを送信
-    func sendMessage(_ text: String, taskId: String?, sessionId: String?) async throws -> A2ATaskInfo
+    /// メッセージを送信し、結果（タスクまたはメッセージ）を返す
+    func sendMessage(_ text: String, taskId: String?, contextId: String?) async throws -> A2ASendResult
 }
 
 // MARK: - A2AAuthentication
@@ -124,6 +124,30 @@ public struct A2ASkillInfo: Sendable, Equatable {
     }
 }
 
+// MARK: - A2ATaskState
+
+/// タスクの状態（A2A 標準の状態を SDK 非依存に表現）。
+public enum A2ATaskState: String, Sendable, Equatable {
+    case submitted
+    case working
+    case inputRequired = "input-required"
+    case completed
+    case failed
+    case canceled
+    case rejected
+    case authRequired = "auth-required"
+    /// 未知・未指定。
+    case unknown
+
+    /// 終端状態（completed / failed / canceled / rejected）。
+    public var isTerminal: Bool {
+        switch self {
+        case .completed, .failed, .canceled, .rejected: true
+        default: false
+        }
+    }
+}
+
 // MARK: - A2ATaskInfo
 
 /// タスクの実行結果情報
@@ -133,11 +157,11 @@ public struct A2ATaskInfo: Sendable, Equatable {
     /// タスクID
     public let id: String
 
-    /// セッションID
-    public let sessionId: String?
+    /// コンテキストID（会話・セッションを束ねる識別子）
+    public let contextId: String?
 
     /// タスクの状態
-    public let state: String
+    public let state: A2ATaskState
 
     /// ステータスメッセージのテキスト
     public let statusMessage: String?
@@ -147,32 +171,26 @@ public struct A2ATaskInfo: Sendable, Equatable {
 
     public init(
         id: String,
-        sessionId: String? = nil,
-        state: String,
+        contextId: String? = nil,
+        state: A2ATaskState,
         statusMessage: String? = nil,
         artifactTexts: [String] = []
     ) {
         self.id = id
-        self.sessionId = sessionId
+        self.contextId = contextId
         self.state = state
         self.statusMessage = statusMessage
         self.artifactTexts = artifactTexts
     }
 
     /// 完了しているかどうか
-    public var isCompleted: Bool {
-        state == "completed"
-    }
+    public var isCompleted: Bool { state == .completed }
 
     /// 失敗しているかどうか
-    public var isFailed: Bool {
-        state == "failed"
-    }
+    public var isFailed: Bool { state == .failed }
 
     /// 入力が必要かどうか
-    public var isInputRequired: Bool {
-        state == "input-required"
-    }
+    public var isInputRequired: Bool { state == .inputRequired }
 
     /// レスポンステキスト（ステータスメッセージ + アーティファクト）
     public var responseText: String {
@@ -185,11 +203,79 @@ public struct A2ATaskInfo: Sendable, Equatable {
     }
 }
 
+// MARK: - A2AMessageInfo
+
+/// メッセージ応答情報（エージェントがタスクではなくメッセージを返した場合）。
+public struct A2AMessageInfo: Sendable, Equatable {
+    /// メッセージID
+    public let messageId: String
+
+    /// コンテキストID
+    public let contextId: String?
+
+    /// 関連タスクID
+    public let taskId: String?
+
+    /// 本文テキスト
+    public let text: String
+
+    public init(messageId: String, contextId: String? = nil, taskId: String? = nil, text: String) {
+        self.messageId = messageId
+        self.contextId = contextId
+        self.taskId = taskId
+        self.text = text
+    }
+}
+
+// MARK: - A2ASendResult
+
+/// メッセージ送信の結果（A2A 標準どおりタスクまたはメッセージのいずれか）。
+public enum A2ASendResult: Sendable, Equatable {
+    case task(A2ATaskInfo)
+    case message(A2AMessageInfo)
+
+    /// 応答テキスト（タスクなら responseText、メッセージなら本文）。
+    public var responseText: String {
+        switch self {
+        case .task(let task): task.responseText
+        case .message(let message): message.text
+        }
+    }
+
+    /// 失敗したタスクかどうか。
+    public var isFailed: Bool {
+        if case .task(let task) = self { return task.isFailed }
+        return false
+    }
+
+    /// タスク結果（あれば）。
+    public var task: A2ATaskInfo? {
+        if case .task(let task) = self { return task }
+        return nil
+    }
+
+    /// メッセージ結果（あれば）。
+    public var message: A2AMessageInfo? {
+        if case .message(let message) = self { return message }
+        return nil
+    }
+
+    /// コンテキストID（タスク・メッセージ共通）。
+    public var contextId: String? {
+        switch self {
+        case .task(let task): task.contextId
+        case .message(let message): message.contextId
+        }
+    }
+}
+
 // MARK: - A2AAgent
 
 /// A2Aエージェントへの接続を表す具象型
 ///
 /// リモートA2Aエージェントに接続し、スキル（ツール）を取得・実行します。
+/// 対応バインディングは Agent Card の `supportedInterfaces` から自動選択されます
+/// （JSON-RPC 優先・REST フォールバック）。
 ///
 /// ## 使用例
 ///
@@ -209,8 +295,8 @@ public struct A2AAgent: A2AAgentProtocol {
     public let agentName: String
     public let agentURL: URL
 
-    private let authentication: A2AAuthentication
-    private let timeout: TimeInterval
+    /// SDK を隠蔽するアダプタ（バインディング交渉とカードを内部でキャッシュ）。
+    private let adapter: A2AClientAdapter
 
     // MARK: - Initialization
 
@@ -229,34 +315,31 @@ public struct A2AAgent: A2AAgentProtocol {
     ) {
         self.agentURL = url
         self.agentName = name ?? url.host ?? "a2a-agent"
-        self.authentication = authentication
-        self.timeout = timeout
+        self.adapter = A2AClientAdapter(url: url, authentication: authentication, timeout: timeout)
     }
 
     // MARK: - A2AAgentProtocol
 
     public func fetchAgentInfo() async throws -> A2AAgentInfo {
-        let adapter = createAdapter()
-        return try await adapter.fetchAgentInfo()
+        try await adapter.fetchAgentInfo()
     }
 
     public func fetchTools() async throws -> [A2AAgentTool] {
-        let adapter = createAdapter()
         let agentInfo = try await adapter.fetchAgentInfo()
+        let agentName = self.agentName
+        let adapter = self.adapter
 
         // 各スキルをA2AAgentToolに変換
         return agentInfo.skills.map { skill in
-            // スキル名とエージェント名を取得（Sendable対応）
             let skillName = skill.name
             let skillId = skill.id
-            let agentName = self.agentName
 
             return A2AAgentTool(
-                name: "\(self.agentName)_\(skill.id)",
+                name: "\(agentName)_\(skill.id)",
                 description: skill.description ?? "Skill '\(skillName)' from A2A agent '\(agentName)'",
                 skillId: skillId,
                 agentName: agentName
-            ) { [authentication, timeout, agentURL] argumentsData in
+            ) { argumentsData in
                 // 引数からテキストを抽出
                 let text: String
                 if argumentsData.isEmpty {
@@ -268,18 +351,11 @@ public struct A2AAgent: A2AAgentProtocol {
                     text = String(data: argumentsData, encoding: .utf8) ?? ""
                 }
 
-                let execAdapter = A2AClientAdapter(
-                    url: agentURL,
-                    authentication: authentication,
-                    timeout: timeout
-                )
-                let taskInfo = try await execAdapter.sendMessage(text: text)
-
-                if taskInfo.isFailed {
-                    return .error(taskInfo.responseText.isEmpty ? "Task failed" : taskInfo.responseText)
+                let result = try await adapter.sendMessage(text: text)
+                if result.isFailed {
+                    return .error(result.responseText.isEmpty ? "Task failed" : result.responseText)
                 }
-
-                return .text(taskInfo.responseText.isEmpty ? "Task \(taskInfo.state)" : taskInfo.responseText)
+                return .text(result.responseText.isEmpty ? "OK" : result.responseText)
             }
         }
     }
@@ -287,16 +363,9 @@ public struct A2AAgent: A2AAgentProtocol {
     public func sendMessage(
         _ text: String,
         taskId: String? = nil,
-        sessionId: String? = nil
-    ) async throws -> A2ATaskInfo {
-        let adapter = createAdapter()
-        return try await adapter.sendMessage(text: text, taskId: taskId, sessionId: sessionId)
-    }
-
-    // MARK: - Private
-
-    private func createAdapter() -> A2AClientAdapter {
-        A2AClientAdapter(url: agentURL, authentication: authentication, timeout: timeout)
+        contextId: String? = nil
+    ) async throws -> A2ASendResult {
+        try await adapter.sendMessage(text: text, taskId: taskId, contextId: contextId)
     }
 }
 
