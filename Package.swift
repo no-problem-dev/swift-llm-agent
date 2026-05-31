@@ -25,6 +25,8 @@ let package = Package(
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.1"),
         .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.6.0"),
         .package(url: "https://github.com/no-problem-dev/swift-a2ui.git", from: "0.7.2"),
+        .package(url: "https://github.com/no-problem-dev/swift-http-transport.git", from: "1.1.0"),
+        .package(url: "https://github.com/no-problem-dev/swift-structured-data.git", from: "1.3.0"),
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.4.0"),
     ],
     targets: [
@@ -37,6 +39,9 @@ let package = Package(
             .product(name: "LLMTool", package: "swift-llm-client"),
             .product(name: "MCP", package: "swift-sdk"),
             .product(name: "SwiftSoup", package: "SwiftSoup"),
+            .product(name: "HTTPTransport", package: "swift-http-transport"),
+            .product(name: "StructuredDataCore", package: "swift-structured-data"),
+            .product(name: "JSONParsing", package: "swift-structured-data"),
         ]),
         .target(name: "LLMAgentSession", dependencies: [
             "LLMAgent",

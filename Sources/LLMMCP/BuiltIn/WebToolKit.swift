@@ -1,4 +1,7 @@
 import Foundation
+import HTTPTransport
+import StructuredDataCore
+import JSONParsing
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
@@ -43,8 +46,8 @@ public final class WebToolKit: ToolKit, @unchecked Sendable {
     /// 許可されたドメイン（nilの場合は全て許可）
     private let allowedDomains: Set<String>?
 
-    /// URLSession
-    private let session: URLSession
+    /// HTTP トランスポート
+    private let transport: any HTTPTransport
 
     /// タイムアウト秒数
     private let timeout: TimeInterval
@@ -64,21 +67,27 @@ public final class WebToolKit: ToolKit, @unchecked Sendable {
     ///   - timeout: リクエストのタイムアウト秒数（デフォルト: 30）
     ///   - maxContentSize: 最大取得サイズ（デフォルト: 5MB）
     ///   - extractor: コンテンツ抽出器（デフォルト: SwiftSoupContentExtractor）
+    ///   - transport: HTTP トランスポート（テスト時に差し替え可能）
     public init(
         allowedDomains: [String]? = nil,
         timeout: TimeInterval = 30,
         maxContentSize: Int = 5 * 1024 * 1024,
-        extractor: (any WebContentExtractor)? = nil
+        extractor: (any WebContentExtractor)? = nil,
+        transport: (any HTTPTransport)? = nil
     ) {
         self.allowedDomains = allowedDomains.map { Set($0.map { $0.lowercased() }) }
         self.timeout = timeout
         self.maxContentSize = maxContentSize
         self.extractor = extractor ?? SwiftSoupContentExtractor()
 
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = timeout
-        config.timeoutIntervalForResource = timeout * 2
-        self.session = URLSession(configuration: config)
+        if let transport {
+            self.transport = transport
+        } else {
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = timeout
+            config.timeoutIntervalForResource = timeout * 2
+            self.transport = URLSessionTransport(session: URLSession(configuration: config), defaultTimeout: timeout)
+        }
     }
 
     // MARK: - ToolKit Protocol
@@ -256,36 +265,33 @@ public final class WebToolKit: ToolKit, @unchecked Sendable {
             let startIndex = input.startIndex ?? 0
             let raw = input.raw ?? false
 
-            var request = URLRequest(url: url)
-            request.httpMethod = input.method ?? "GET"
-            request.setValue(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
-                forHTTPHeaderField: "User-Agent"
-            )
-            request.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
-            request.setValue("ja,en;q=0.9", forHTTPHeaderField: "Accept-Language")
-
+            var requestHeaders: HTTPHeaders = [
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "ja,en;q=0.9",
+            ]
             if let headers = input.headers {
                 for (key, value) in headers {
-                    request.setValue(value, forHTTPHeaderField: key)
+                    requestHeaders[key] = value
                 }
             }
 
-            if let body = input.body {
-                request.httpBody = body.data(using: .utf8)
+            let request = HTTPRequest(
+                method: input.method ?? "GET",
+                url: url,
+                headers: requestHeaders,
+                body: input.body?.data(using: .utf8),
+                timeout: timeout
+            )
+
+            let response = try await transport.send(request)
+            let responseData = response.body
+
+            guard (200...299).contains(response.status) else {
+                throw WebToolKitError.httpError(statusCode: response.status)
             }
 
-            let (responseData, response) = try await session.data(for: request)
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw WebToolKitError.invalidResponse
-            }
-
-            guard (200...299).contains(httpResponse.statusCode) else {
-                throw WebToolKitError.httpError(statusCode: httpResponse.statusCode)
-            }
-
-            let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type")
+            let contentType = response.headers["Content-Type"]
 
             // バイナリコンテンツ（PDF・画像等）はテキスト変換不可のためエラー
             if responseData.count > maxContentSize {
@@ -387,48 +393,43 @@ public final class WebToolKit: ToolKit, @unchecked Sendable {
             let input = try JSONDecoder().decode(FetchInput.self, from: data)
             let url = try validateURL(input.url)
 
-            var request = URLRequest(url: url)
-            request.httpMethod = input.method ?? "GET"
-            request.setValue("application/json", forHTTPHeaderField: "Accept")
-
+            var requestHeaders: HTTPHeaders = ["Accept": "application/json"]
             if let headers = input.headers {
                 for (key, value) in headers {
-                    request.setValue(value, forHTTPHeaderField: key)
+                    requestHeaders[key] = value
                 }
             }
-
-            if let body = input.body {
-                request.httpBody = body.data(using: .utf8)
-                if request.value(forHTTPHeaderField: "Content-Type") == nil {
-                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                }
+            if input.body != nil, requestHeaders["Content-Type"] == nil {
+                requestHeaders["Content-Type"] = "application/json"
             }
 
-            let (responseData, response) = try await session.data(for: request)
+            let request = HTTPRequest(
+                method: input.method ?? "GET",
+                url: url,
+                headers: requestHeaders,
+                body: input.body?.data(using: .utf8),
+                timeout: timeout
+            )
 
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw WebToolKitError.invalidResponse
-            }
+            let response = try await transport.send(request)
+            let responseData = response.body
 
-            guard (200...299).contains(httpResponse.statusCode) else {
-                throw WebToolKitError.httpError(statusCode: httpResponse.statusCode)
+            guard (200...299).contains(response.status) else {
+                throw WebToolKitError.httpError(statusCode: response.status)
             }
 
             guard responseData.count <= maxContentSize else {
                 throw WebToolKitError.contentTooLarge(size: responseData.count, maxSize: maxContentSize)
             }
 
-            // JSONとしてパース
-            let jsonObject = try JSONSerialization.jsonObject(with: responseData)
+            let parsed = try JSONParser().parse(responseData)
+            let result: StructuredValue = .object([
+                "url": .string(url.absoluteString),
+                "statusCode": .number(StructuredNumber(integerLiteral: response.status)),
+                "data": parsed,
+            ])
 
-            // カスタムエンコード（dataフィールドはAny型なので）
-            let resultDict: [String: Any] = [
-                "url": url.absoluteString,
-                "statusCode": httpResponse.statusCode,
-                "data": jsonObject
-            ]
-
-            let output = try JSONSerialization.data(withJSONObject: resultDict)
+            let output = try JSONSerializer().serialize(result)
             return .json(output)
         }
     }
@@ -453,25 +454,18 @@ public final class WebToolKit: ToolKit, @unchecked Sendable {
             let input = try JSONDecoder().decode(FetchHeadersInput.self, from: data)
             let url = try validateURL(input.url)
 
-            var request = URLRequest(url: url)
-            request.httpMethod = "HEAD"
+            let request = HTTPRequest(method: "HEAD", url: url, timeout: timeout)
 
-            let (_, response) = try await session.data(for: request)
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw WebToolKitError.invalidResponse
-            }
+            let response = try await transport.send(request)
 
             var headers: [String: String] = [:]
-            for (key, value) in httpResponse.allHeaderFields {
-                if let keyString = key as? String, let valueString = value as? String {
-                    headers[keyString] = valueString
-                }
+            for pair in response.headers.pairs {
+                headers[pair.name] = pair.value
             }
 
             let result = FetchHeadersResult(
                 url: url.absoluteString,
-                statusCode: httpResponse.statusCode,
+                statusCode: response.status,
                 headers: headers
             )
 

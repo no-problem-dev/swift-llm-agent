@@ -1,4 +1,7 @@
 import Foundation
+import HTTPTransport
+import StructuredDataCore
+import JSONParsing
 import JavaScriptCore
 import LLMClient
 import LLMTool
@@ -154,11 +157,9 @@ public final class ScriptToolKit: ToolKit, @unchecked Sendable {
         // 戻り値を追加
         if let result, !result.isUndefined, !result.isNull {
             let resultString: String
-            if result.isObject, let jsonData = try? JSONSerialization.data(
-                withJSONObject: result.toObject() as Any,
-                options: [.prettyPrinted, .sortedKeys]
-            ) {
-                resultString = String(data: jsonData, encoding: .utf8) ?? result.toString()
+            if result.isObject, let object = result.toObject() {
+                resultString = JSONSerializer(options: .init(prettyPrinted: true, sortKeys: true))
+                    .string(from: StructuredValue(anyValue: object))
             } else {
                 resultString = result.toString()
             }
@@ -222,8 +223,8 @@ public final class ScriptBridge: @unchecked Sendable {
     /// FileManager
     private let fileManager: FileManager
 
-    /// URLSession
-    private let session: URLSession
+    /// HTTP トランスポート
+    private let transport: any HTTPTransport
 
     /// HTTP リクエストのタイムアウト
     private let httpTimeout: TimeInterval
@@ -238,7 +239,8 @@ public final class ScriptBridge: @unchecked Sendable {
     public init(
         allowedPaths: [String]? = nil,
         workingDirectory: String? = nil,
-        httpTimeout: TimeInterval = 15
+        httpTimeout: TimeInterval = 15,
+        transport: (any HTTPTransport)? = nil
     ) {
         self.allowedPaths = allowedPaths?.map { path in
             NSString(string: path).expandingTildeInPath
@@ -248,9 +250,13 @@ public final class ScriptBridge: @unchecked Sendable {
             ?? FileManager.default.currentDirectoryPath
         self.fileManager = FileManager.default
 
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = httpTimeout
-        self.session = URLSession(configuration: config)
+        if let transport {
+            self.transport = transport
+        } else {
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = httpTimeout
+            self.transport = URLSessionTransport(session: URLSession(configuration: config), defaultTimeout: httpTimeout)
+        }
 
         self.httpTimeout = httpTimeout
     }
@@ -348,30 +354,22 @@ public final class ScriptBridge: @unchecked Sendable {
             // nonisolated(unsafe) で Sendable 警告を回避（セマフォで同期するため安全）
             nonisolated(unsafe) var resultText = "[error] Request failed"
             let semaphore = DispatchSemaphore(value: 0)
+            let transport = self.transport
+            let timeout = self.httpTimeout
 
-            let task = session.dataTask(with: url) { data, response, error in
+            Task {
                 defer { semaphore.signal() }
-
-                if let error {
+                do {
+                    let response = try await transport.send(HTTPRequest(method: "GET", url: url, timeout: timeout))
+                    guard (200...299).contains(response.status) else {
+                        resultText = "[error] HTTP \(response.status)"
+                        return
+                    }
+                    resultText = String(data: response.body, encoding: .utf8) ?? "[error] Cannot decode response"
+                } catch {
                     resultText = "[error] \(error.localizedDescription)"
-                    return
                 }
-
-                guard let data,
-                      let httpResponse = response as? HTTPURLResponse
-                else {
-                    resultText = "[error] No response"
-                    return
-                }
-
-                guard (200...299).contains(httpResponse.statusCode) else {
-                    resultText = "[error] HTTP \(httpResponse.statusCode)"
-                    return
-                }
-
-                resultText = String(data: data, encoding: .utf8) ?? "[error] Cannot decode response"
             }
-            task.resume()
             semaphore.wait()
 
             return resultText

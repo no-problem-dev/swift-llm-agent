@@ -1,4 +1,5 @@
 import Foundation
+import HTTPTransport
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
@@ -22,7 +23,7 @@ public final class BraveSearchProvider: WebSearchProvider, @unchecked Sendable {
     private let apiKey: String
     private let searchLang: String?
     private let country: String?
-    private let session: URLSession
+    private let transport: any HTTPTransport
     private let timeout: TimeInterval
 
     // MARK: - Initialization
@@ -34,15 +35,26 @@ public final class BraveSearchProvider: WebSearchProvider, @unchecked Sendable {
     ///   - searchLang: 検索言語（例: "ja"）
     ///   - country: 国コード（例: "JP"）
     ///   - timeout: リクエストのタイムアウト秒数（デフォルト: 15）
-    public init(apiKey: String, searchLang: String? = nil, country: String? = nil, timeout: TimeInterval = 15) {
+    ///   - transport: HTTP トランスポート（テスト時に差し替え可能）
+    public init(
+        apiKey: String,
+        searchLang: String? = nil,
+        country: String? = nil,
+        timeout: TimeInterval = 15,
+        transport: (any HTTPTransport)? = nil
+    ) {
         self.apiKey = apiKey
         self.searchLang = searchLang
         self.country = country
         self.timeout = timeout
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = timeout
-        config.timeoutIntervalForResource = timeout * 2
-        self.session = URLSession(configuration: config)
+        if let transport {
+            self.transport = transport
+        } else {
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = timeout
+            config.timeoutIntervalForResource = timeout * 2
+            self.transport = URLSessionTransport(session: URLSession(configuration: config), defaultTimeout: timeout)
+        }
     }
 
     // MARK: - WebSearchProvider
@@ -65,22 +77,20 @@ public final class BraveSearchProvider: WebSearchProvider, @unchecked Sendable {
             throw WebSearchError.invalidQuery(query)
         }
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(apiKey, forHTTPHeaderField: "X-Subscription-Token")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let request = HTTPRequest(
+            method: "GET",
+            url: url,
+            headers: ["X-Subscription-Token": apiKey, "Accept": "application/json"],
+            timeout: timeout
+        )
 
-        let (data, response) = try await session.data(for: request)
+        let response = try await transport.send(request)
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw WebSearchError.invalidResponse
+        guard (200...299).contains(response.status) else {
+            throw WebSearchError.httpError(statusCode: response.status)
         }
 
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw WebSearchError.httpError(statusCode: httpResponse.statusCode)
-        }
-
-        let braveResponse = try JSONDecoder().decode(BraveSearchResponse.self, from: data)
+        let braveResponse = try JSONDecoder().decode(BraveSearchResponse.self, from: response.body)
 
         return (braveResponse.web?.results ?? []).prefix(maxResults).map { result in
             WebSearchResult(

@@ -1,4 +1,5 @@
 import Foundation
+import HTTPTransport
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
@@ -22,7 +23,7 @@ public final class SerperSearchProvider: WebSearchProvider, @unchecked Sendable 
     private let apiKey: String
     private let gl: String?
     private let hl: String?
-    private let session: URLSession
+    private let transport: any HTTPTransport
     private let timeout: TimeInterval
 
     // MARK: - Initialization
@@ -34,15 +35,26 @@ public final class SerperSearchProvider: WebSearchProvider, @unchecked Sendable 
     ///   - gl: 地域コード（例: "jp"）
     ///   - hl: 言語コード（例: "ja"）
     ///   - timeout: リクエストのタイムアウト秒数（デフォルト: 15）
-    public init(apiKey: String, gl: String? = nil, hl: String? = nil, timeout: TimeInterval = 15) {
+    ///   - transport: HTTP トランスポート（テスト時に差し替え可能）
+    public init(
+        apiKey: String,
+        gl: String? = nil,
+        hl: String? = nil,
+        timeout: TimeInterval = 15,
+        transport: (any HTTPTransport)? = nil
+    ) {
         self.apiKey = apiKey
         self.gl = gl
         self.hl = hl
         self.timeout = timeout
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = timeout
-        config.timeoutIntervalForResource = timeout * 2
-        self.session = URLSession(configuration: config)
+        if let transport {
+            self.transport = transport
+        } else {
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = timeout
+            config.timeoutIntervalForResource = timeout * 2
+            self.transport = URLSessionTransport(session: URLSession(configuration: config), defaultTimeout: timeout)
+        }
     }
 
     // MARK: - WebSearchProvider
@@ -52,35 +64,22 @@ public final class SerperSearchProvider: WebSearchProvider, @unchecked Sendable 
             throw WebSearchError.invalidResponse
         }
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue(apiKey, forHTTPHeaderField: "X-API-KEY")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let requestBody = SerperSearchRequest(q: query, num: min(maxResults, 100), gl: gl, hl: hl)
+        let request = HTTPRequest(
+            method: "POST",
+            url: url,
+            headers: ["X-API-KEY": apiKey, "Content-Type": "application/json"],
+            body: try JSONEncoder().encode(requestBody),
+            timeout: timeout
+        )
 
-        var body: [String: Any] = [
-            "q": query,
-            "num": min(maxResults, 100)
-        ]
-        if let gl {
-            body["gl"] = gl
-        }
-        if let hl {
-            body["hl"] = hl
-        }
+        let response = try await transport.send(request)
 
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw WebSearchError.invalidResponse
+        guard (200...299).contains(response.status) else {
+            throw WebSearchError.httpError(statusCode: response.status)
         }
 
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw WebSearchError.httpError(statusCode: httpResponse.statusCode)
-        }
-
-        let serperResponse = try JSONDecoder().decode(SerperSearchResponse.self, from: data)
+        let serperResponse = try JSONDecoder().decode(SerperSearchResponse.self, from: response.body)
 
         return (serperResponse.organic ?? []).prefix(maxResults).map { result in
             WebSearchResult(
@@ -92,7 +91,14 @@ public final class SerperSearchProvider: WebSearchProvider, @unchecked Sendable 
     }
 }
 
-// MARK: - Serper API Response Types
+// MARK: - Serper API Request / Response Types
+
+private struct SerperSearchRequest: Encodable {
+    let q: String
+    let num: Int
+    let gl: String?
+    let hl: String?
+}
 
 private struct SerperSearchResponse: Decodable {
     let organic: [SerperOrganicResult]?

@@ -1,4 +1,5 @@
 import Foundation
+import HTTPTransport
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
@@ -14,29 +15,28 @@ public final class GeminiImageProvider: ImageGenerationProvider, @unchecked Send
     // MARK: - Properties
 
     private let apiKey: String
-    private let session: URLSession
+    private let transport: any HTTPTransport
     private let timeout: TimeInterval
 
     // MARK: - Initialization
 
-    public init(apiKey: String, timeout: TimeInterval = 60) {
+    public init(apiKey: String, timeout: TimeInterval = 60, transport: (any HTTPTransport)? = nil) {
         self.apiKey = apiKey
         self.timeout = timeout
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = timeout
-        config.timeoutIntervalForResource = timeout * 2
-        self.session = URLSession(configuration: config)
+        if let transport {
+            self.transport = transport
+        } else {
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = timeout
+            config.timeoutIntervalForResource = timeout * 2
+            self.transport = URLSessionTransport(session: URLSession(configuration: config), defaultTimeout: timeout)
+        }
     }
 
     // MARK: - ImageGenerationProvider
 
     public func generateImage(prompt: String, size: ImageGenerationSize, quality: ImageGenerationQuality) async throws -> GeneratedImageData {
         let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict")!
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let requestBody = ImagenRequest(
             instances: [ImagenInstance(prompt: prompt)],
@@ -47,26 +47,28 @@ public final class GeminiImageProvider: ImageGenerationProvider, @unchecked Send
             )
         )
 
-        request.httpBody = try JSONEncoder().encode(requestBody)
+        let request = HTTPRequest(
+            method: "POST",
+            url: url,
+            headers: ["x-goog-api-key": apiKey, "Content-Type": "application/json"],
+            body: try JSONEncoder().encode(requestBody),
+            timeout: timeout
+        )
 
-        let (data, response) = try await session.data(for: request)
+        let response = try await transport.send(request)
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw ImageGenerationToolError.invalidResponse
-        }
-
-        guard (200...299).contains(httpResponse.statusCode) else {
-            if httpResponse.statusCode == 400 {
+        guard (200...299).contains(response.status) else {
+            if response.status == 400 {
                 // Check for content policy violation
-                if let errorBody = String(data: data, encoding: .utf8),
+                if let errorBody = String(data: response.body, encoding: .utf8),
                    errorBody.contains("SAFETY") || errorBody.contains("policy") {
                     throw ImageGenerationToolError.contentPolicyViolation
                 }
             }
-            throw ImageGenerationToolError.httpError(statusCode: httpResponse.statusCode)
+            throw ImageGenerationToolError.httpError(statusCode: response.status)
         }
 
-        let apiResponse = try JSONDecoder().decode(ImagenResponse.self, from: data)
+        let apiResponse = try JSONDecoder().decode(ImagenResponse.self, from: response.body)
 
         guard let firstPrediction = apiResponse.predictions.first else {
             throw ImageGenerationToolError.invalidResponse

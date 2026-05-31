@@ -1,4 +1,5 @@
 import Foundation
+import StructuredDataCore
 import LLMClient
 import LLMTool
 
@@ -81,18 +82,18 @@ extension MCPTool {
     ///   - executeHandler: 実行ハンドラー
     /// - Returns: MCPTool、またはパース失敗時はnil
     public static func from(
-        json: [String: Any],
+        json: StructuredValue,
         executeHandler: @escaping @Sendable (Data) async throws -> ToolResult
     ) -> MCPTool? {
-        guard let name = json["name"] as? String,
-              let description = json["description"] as? String else {
+        guard let name = json.string("name"),
+              let description = json.string("description") else {
             return nil
         }
 
         // inputSchemaをパース
         let inputSchema: JSONSchema
-        if let schemaDict = json["inputSchema"] as? [String: Any] {
-            inputSchema = parseJSONSchema(from: schemaDict)
+        if json.has("inputSchema") {
+            inputSchema = parseJSONSchema(from: json["inputSchema"])
         } else {
             // スキーマがない場合は空のオブジェクト
             inputSchema = .object(properties: [:], required: [])
@@ -126,48 +127,43 @@ extension MCPTool {
         return MCPToolCapabilities.from(isReadOnly: isReadOnly, isDangerous: isDangerous)
     }
 
-    /// JSON辞書からJSONSchemaを構築
-    private static func parseJSONSchema(from dict: [String: Any]) -> JSONSchema {
-        guard let type = dict["type"] as? String else {
+    /// JSON値からJSONSchemaを構築
+    private static func parseJSONSchema(from value: StructuredValue) -> JSONSchema {
+        guard let type = value.string("type") else {
             return .object(description: nil, properties: [:], required: [])
         }
+
+        let description = value.string("description")
 
         switch type {
         case "object":
             var properties: [String: JSONSchema] = [:]
-            if let props = dict["properties"] as? [String: [String: Any]] {
-                for (key, value) in props {
-                    properties[key] = parseJSONSchema(from: value)
+            if let props = value.object("properties") {
+                for (key, propValue) in props {
+                    properties[key] = parseJSONSchema(from: propValue)
                 }
             }
-            let required = dict["required"] as? [String] ?? []
-            let description = dict["description"] as? String
+            let required = value.stringArray("required") ?? []
             return .object(description: description, properties: properties, required: required)
 
         case "string":
-            let description = dict["description"] as? String
-            if let enumValues = dict["enum"] as? [String] {
+            if let enumValues = value.stringArray("enum") {
                 return .string(description: description, enum: enumValues)
             }
             return .string(description: description)
 
         case "integer":
-            let description = dict["description"] as? String
             return .integer(description: description)
 
         case "number":
-            let description = dict["description"] as? String
             return .number(description: description)
 
         case "boolean":
-            let description = dict["description"] as? String
             return .boolean(description: description)
 
         case "array":
-            let description = dict["description"] as? String
-            if let items = dict["items"] as? [String: Any] {
-                let itemSchema = parseJSONSchema(from: items)
-                return .array(description: description, items: itemSchema)
+            if value.has("items") {
+                return .array(description: description, items: parseJSONSchema(from: value["items"]))
             }
             return .array(description: description, items: .string())
 

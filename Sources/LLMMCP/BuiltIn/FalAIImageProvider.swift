@@ -1,4 +1,5 @@
 import Foundation
+import HTTPTransport
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
@@ -14,29 +15,28 @@ public final class FalAIImageProvider: ImageGenerationProvider, @unchecked Senda
     // MARK: - Properties
 
     private let apiKey: String
-    private let session: URLSession
+    private let transport: any HTTPTransport
     private let timeout: TimeInterval
 
     // MARK: - Initialization
 
-    public init(apiKey: String, timeout: TimeInterval = 60) {
+    public init(apiKey: String, timeout: TimeInterval = 60, transport: (any HTTPTransport)? = nil) {
         self.apiKey = apiKey
         self.timeout = timeout
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = timeout
-        config.timeoutIntervalForResource = timeout * 2
-        self.session = URLSession(configuration: config)
+        if let transport {
+            self.transport = transport
+        } else {
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = timeout
+            config.timeoutIntervalForResource = timeout * 2
+            self.transport = URLSessionTransport(session: URLSession(configuration: config), defaultTimeout: timeout)
+        }
     }
 
     // MARK: - ImageGenerationProvider
 
     public func generateImage(prompt: String, size: ImageGenerationSize, quality: ImageGenerationQuality) async throws -> GeneratedImageData {
         let url = URL(string: "https://fal.run/fal-ai/flux/schnell")!
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Key \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let (width, height) = falSize(size)
         let requestBody = FalImageRequest(
@@ -45,19 +45,21 @@ public final class FalAIImageProvider: ImageGenerationProvider, @unchecked Senda
             numImages: 1
         )
 
-        request.httpBody = try JSONEncoder().encode(requestBody)
+        let request = HTTPRequest(
+            method: "POST",
+            url: url,
+            headers: ["Authorization": "Key \(apiKey)", "Content-Type": "application/json"],
+            body: try JSONEncoder().encode(requestBody),
+            timeout: timeout
+        )
 
-        let (data, response) = try await session.data(for: request)
+        let response = try await transport.send(request)
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw ImageGenerationToolError.invalidResponse
+        guard (200...299).contains(response.status) else {
+            throw ImageGenerationToolError.httpError(statusCode: response.status)
         }
 
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw ImageGenerationToolError.httpError(statusCode: httpResponse.statusCode)
-        }
-
-        let apiResponse = try JSONDecoder().decode(FalImageResponse.self, from: data)
+        let apiResponse = try JSONDecoder().decode(FalImageResponse.self, from: response.body)
 
         guard let firstImage = apiResponse.images.first else {
             throw ImageGenerationToolError.invalidResponse
@@ -68,23 +70,22 @@ public final class FalAIImageProvider: ImageGenerationProvider, @unchecked Senda
             throw ImageGenerationToolError.invalidResponse
         }
 
-        let (imageData, imageResponse) = try await session.data(from: imageURL)
+        let imageResponse = try await transport.send(HTTPRequest(method: "GET", url: imageURL, timeout: timeout))
 
-        guard let imageHttpResponse = imageResponse as? HTTPURLResponse,
-              (200...299).contains(imageHttpResponse.statusCode) else {
+        guard (200...299).contains(imageResponse.status) else {
             throw ImageGenerationToolError.imageDownloadFailed
         }
 
         // Determine format from content type or default to jpeg
         let mimeType: ImageMediaType
-        if let contentType = imageHttpResponse.value(forHTTPHeaderField: "Content-Type") {
+        if let contentType = imageResponse.headers["Content-Type"] {
             mimeType = ImageMediaType(rawValue: contentType) ?? .jpeg
         } else {
             mimeType = .jpeg
         }
 
         return GeneratedImageData(
-            data: imageData,
+            data: imageResponse.body,
             mimeType: mimeType
         )
     }

@@ -1,4 +1,6 @@
 import Foundation
+import StructuredDataCore
+import JSONParsing
 import LLMClient
 import LLMTool
 import MCP
@@ -250,42 +252,38 @@ internal actor SDKClientAdapter {
     private func convertDataToValueDict(_ data: Data) throws -> [String: MCP.Value]? {
         guard !data.isEmpty else { return nil }
 
-        let jsonObject = try JSONSerialization.jsonObject(with: data)
-        guard let dict = jsonObject as? [String: Any] else {
+        guard case .object(let object) = try JSONParser().parse(data) else {
             return nil
         }
 
-        return convertAnyToValueDict(dict)
+        return convertObjectToValueDict(object)
     }
 
-    /// Any型をMCP.Valueの辞書に変換
-    private func convertAnyToValueDict(_ dict: [String: Any]) -> [String: MCP.Value] {
+    /// OrderedObjectをMCP.Valueの辞書に変換
+    private func convertObjectToValueDict(_ object: OrderedObject) -> [String: MCP.Value] {
         var result: [String: MCP.Value] = [:]
-        for (key, value) in dict {
-            result[key] = convertAnyToValue(value)
+        for (key, value) in object {
+            result[key] = convertValueToMCPValue(value)
         }
         return result
     }
 
-    /// Any型をMCP.Valueに変換
-    private func convertAnyToValue(_ any: Any) -> MCP.Value {
-        switch any {
-        case let string as String:
-            return .string(string)
-        case let int as Int:
-            return .int(int)
-        case let double as Double:
-            return .double(double)
-        case let bool as Bool:
-            return .bool(bool)
-        case let array as [Any]:
-            return .array(array.map { convertAnyToValue($0) })
-        case let dict as [String: Any]:
-            return .object(convertAnyToValueDict(dict))
-        case is NSNull:
+    /// StructuredValueをMCP.Valueに変換
+    private func convertValueToMCPValue(_ value: StructuredValue) -> MCP.Value {
+        switch value {
+        case .null:
             return .null
-        default:
-            return .string(String(describing: any))
+        case .bool(let bool):
+            return .bool(bool)
+        case .number(let number):
+            if let int = number.int { return .int(int) }
+            return .double(number.double)
+        case .string(let string):
+            return .string(string)
+        case .array(let array):
+            return .array(array.map { convertValueToMCPValue($0) })
+        case .object(let object):
+            return .object(convertObjectToValueDict(object))
         }
     }
 
