@@ -1,4 +1,5 @@
 import Foundation
+import JSONParsing
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
@@ -259,8 +260,8 @@ public struct A2AAgent: A2AAgentProtocol {
                 let text: String
                 if argumentsData.isEmpty {
                     text = ""
-                } else if let json = try? JSONSerialization.jsonObject(with: argumentsData) as? [String: Any],
-                          let message = json["message"] as? String {
+                } else if let json = try? JSONParser().parse(argumentsData),
+                          let message = json.string("message") {
                     text = message
                 } else {
                     text = String(data: argumentsData, encoding: .utf8) ?? ""

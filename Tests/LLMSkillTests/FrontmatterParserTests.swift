@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import StructuredDataCore
 import LLMAgent
 
 // MARK: - FrontmatterParser Tests
@@ -18,8 +19,8 @@ import LLMAgent
 
     let (frontmatter, body) = try FrontmatterParser.parse(content)
 
-    #expect(frontmatter["name"] as? String == "test-skill")
-    #expect(frontmatter["description"] as? String == "A test skill")
+    #expect(frontmatter.string("name") == "test-skill")
+    #expect(frontmatter.string("description") == "A test skill")
     #expect(body.contains("# Instructions"))
     #expect(body.contains("Do something useful."))
 }
@@ -40,8 +41,7 @@ import LLMAgent
 
     let (frontmatter, _) = try FrontmatterParser.parse(content)
 
-    let tools = frontmatter["allowed-tools"] as? [String]
-    #expect(tools == ["read_file", "search_code", "write_file"])
+    #expect(frontmatter.stringArray("allowed-tools") == ["read_file", "search_code", "write_file"])
 }
 
 @Test func testParseWithInlineArray() throws {
@@ -57,8 +57,7 @@ import LLMAgent
 
     let (frontmatter, _) = try FrontmatterParser.parse(content)
 
-    let tools = frontmatter["allowed-tools"] as? [String]
-    #expect(tools == ["read_file", "search_code"])
+    #expect(frontmatter.stringArray("allowed-tools") == ["read_file", "search_code"])
 }
 
 @Test func testParseWithBooleanValues() throws {
@@ -75,11 +74,13 @@ import LLMAgent
 
     let (frontmatter, _) = try FrontmatterParser.parse(content)
 
-    #expect(frontmatter["user-invocable"] as? Bool == false)
-    #expect(frontmatter["disable-model-invocation"] as? Bool == true)
+    #expect(frontmatter.bool("user-invocable") == false)
+    #expect(frontmatter.bool("disable-model-invocation") == true)
 }
 
-@Test func testParseWithYesNoBooleans() throws {
+/// YAML 1.2 Core（structured-data の YAMLParser）は `yes`/`no` を真偽値ではなく
+/// 文字列として扱う（"Norway problem" の修正）。真偽値は `true`/`false` のみ。
+@Test func testYesNoAreStringsNotBooleans() throws {
     let content = """
         ---
         name: test
@@ -93,8 +94,9 @@ import LLMAgent
 
     let (frontmatter, _) = try FrontmatterParser.parse(content)
 
-    #expect(frontmatter["user-invocable"] as? Bool == true)
-    #expect(frontmatter["disable-model-invocation"] as? Bool == false)
+    #expect(frontmatter.bool("user-invocable") == nil)
+    #expect(frontmatter.string("user-invocable") == "yes")
+    #expect(frontmatter.string("disable-model-invocation") == "no")
 }
 
 @Test func testParseWithQuotedStrings() throws {
@@ -109,8 +111,24 @@ import LLMAgent
 
     let (frontmatter, _) = try FrontmatterParser.parse(content)
 
-    #expect(frontmatter["name"] as? String == "test-skill")
-    #expect(frontmatter["description"] as? String == "A test skill")
+    #expect(frontmatter.string("name") == "test-skill")
+    #expect(frontmatter.string("description") == "A test skill")
+}
+
+@Test func testParseNumericValues() throws {
+    let content = """
+        ---
+        name: test
+        description: Test
+        display-order: 8
+        ---
+
+        Instructions here.
+        """
+
+    let (frontmatter, _) = try FrontmatterParser.parse(content)
+
+    #expect(frontmatter.int("display-order") == 8)
 }
 
 @Test func testMissingOpeningDelimiter() {
@@ -154,8 +172,8 @@ import LLMAgent
 
     let (frontmatter, _) = try FrontmatterParser.parse(content)
 
-    #expect(frontmatter["name"] as? String == "test")
-    #expect(frontmatter["description"] as? String == "Test skill")
+    #expect(frontmatter.string("name") == "test")
+    #expect(frontmatter.string("description") == "Test skill")
 }
 
 @Test func testParsePreservesBody() throws {

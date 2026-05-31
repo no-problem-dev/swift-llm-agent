@@ -1,4 +1,6 @@
 import Foundation
+import StructuredDataCore
+import YAMLParsing
 
 // MARK: - FrontmatterParseError
 
@@ -21,22 +23,19 @@ public enum FrontmatterParseError: Error, Sendable, LocalizedError {
 
 // MARK: - FrontmatterParser
 
-/// YAML フロントマターの軽量パーサー
+/// Markdown フロントマター（`---` 区切り）の分離器。
 ///
-/// SKILL.md / AGENT.md で使用される YAML のサブセットをパースします。
-/// 外部依存なしで、以下の型をサポート:
-/// - 文字列値
-/// - 真偽値（true/false, yes/no）
-/// - 文字列配列（`- item` 形式およびインライン `[a, b]` 形式）
-/// - 複数行文字列（`|` リテラルブロック）
+/// SKILL.md / AGENT.md の先頭 YAML ブロックと本文を切り出し、YAML 本体の解釈は
+/// structured-data の ``YAMLParser``（YAML 1.2 Core）へ委譲する。スカラの型付け
+/// （真偽値・数値・null・文字列）は YAML 仕様に従う。
 public enum FrontmatterParser {
 
     /// フロントマターと本文を分離してパース
     ///
     /// - Parameter content: YAML フロントマター + Markdown のテキスト
-    /// - Returns: (フロントマター辞書, 本文)
+    /// - Returns: (フロントマター, 本文)
     /// - Throws: フロントマターが見つからない場合
-    public static func parse(_ content: String) throws -> ([String: Any], String) {
+    public static func parse(_ content: String) throws -> (StructuredValue, String) {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard trimmed.hasPrefix("---") else {
@@ -65,134 +64,8 @@ public enum FrontmatterParser {
             ? String(remaining[bodyStart...])
             : ""
 
-        let frontmatter = parseYAML(yamlContent)
+        let frontmatter = (try? YAMLParser().parse(yamlContent)) ?? .object(OrderedObject())
         return (frontmatter, body)
     }
 
-    // MARK: - Private
-
-    /// 簡易 YAML パーサー
-    private static func parseYAML(_ yaml: String) -> [String: Any] {
-        var result: [String: Any] = [:]
-        var currentKey: String? = nil
-        var currentArray: [String]? = nil
-        var multilineValue: String? = nil
-
-        let lines = yaml.components(separatedBy: "\n")
-
-        for line in lines {
-            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
-
-            // 空行やコメントをスキップ
-            if trimmedLine.isEmpty || trimmedLine.hasPrefix("#") {
-                // マルチライン中は空行を保持
-                if multilineValue != nil {
-                    multilineValue? += "\n"
-                }
-                continue
-            }
-
-            // マルチライン値の継続（インデントされた行）
-            if multilineValue != nil, let key = currentKey {
-                if line.hasPrefix("  ") || line.hasPrefix("\t") {
-                    multilineValue? += trimmedLine + "\n"
-                    continue
-                } else {
-                    // マルチライン値の確定
-                    result[key] = multilineValue?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    multilineValue = nil
-                    currentKey = nil
-                }
-            }
-
-            // 配列アイテム（- value）
-            if trimmedLine.hasPrefix("- "), let key = currentKey, multilineValue == nil {
-                let value = String(trimmedLine.dropFirst(2))
-                    .trimmingCharacters(in: .whitespaces)
-                    .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-                if currentArray == nil {
-                    currentArray = []
-                }
-                currentArray?.append(value)
-                result[key] = currentArray
-                continue
-            }
-
-            // 前の配列を確定
-            if currentArray != nil {
-                currentArray = nil
-                currentKey = nil
-            }
-
-            // key: value ペア
-            // コロン+スペース（": "）で分割。値にコロンが含まれていても正しく処理できる
-            let keyValueSeparator = ": "
-            guard let separatorRange = trimmedLine.range(of: keyValueSeparator) else {
-                // ": " が見つからない場合、末尾のコロンで試す（値なしキー）
-                guard trimmedLine.hasSuffix(":") else { continue }
-                let key = String(trimmedLine.dropLast()).trimmingCharacters(in: .whitespaces)
-                currentKey = key
-                currentArray = nil
-                continue
-            }
-
-            let key = String(trimmedLine[trimmedLine.startIndex..<separatorRange.lowerBound])
-                .trimmingCharacters(in: .whitespaces)
-            let rawValue = String(trimmedLine[separatorRange.upperBound...])
-                .trimmingCharacters(in: .whitespaces)
-
-            if rawValue.isEmpty {
-                // 次の行が配列かマルチラインかもしれない
-                currentKey = key
-                currentArray = nil
-                continue
-            }
-
-            // マルチラインリテラルブロック（| または >）
-            if rawValue == "|" || rawValue == ">" {
-                currentKey = key
-                multilineValue = ""
-                continue
-            }
-
-            // インライン配列 [a, b, c]
-            if rawValue.hasPrefix("[") && rawValue.hasSuffix("]") {
-                let inner = String(rawValue.dropFirst().dropLast())
-                let items = inner.components(separatedBy: ",")
-                    .map { $0.trimmingCharacters(in: .whitespaces) }
-                    .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "\"'")) }
-                    .filter { !$0.isEmpty }
-                result[key] = items
-                currentKey = nil
-                currentArray = nil
-                continue
-            }
-
-            // 真偽値
-            let lowerValue = rawValue.lowercased()
-            if lowerValue == "true" || lowerValue == "yes" {
-                result[key] = true
-                currentKey = nil
-                continue
-            }
-            if lowerValue == "false" || lowerValue == "no" {
-                result[key] = false
-                currentKey = nil
-                continue
-            }
-
-            // 文字列値（クォート除去）
-            let stringValue = rawValue
-                .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-            result[key] = stringValue
-            currentKey = nil
-        }
-
-        // 末尾のマルチライン値を確定
-        if let key = currentKey, let value = multilineValue {
-            result[key] = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-
-        return result
-    }
 }

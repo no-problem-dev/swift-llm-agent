@@ -1,4 +1,6 @@
 import Foundation
+import StructuredDataCore
+import JSONParsing
 import LLMClient
 import LLMTool
 
@@ -239,12 +241,7 @@ public struct TextAnalysisTool {
             }
 
             // Return as JSON array for easy parsing
-            if let jsonData = try? JSONSerialization.data(withJSONObject: extracted),
-               let jsonString = String(data: jsonData, encoding: .utf8) {
-                return jsonString
-            }
-
-            return extracted.joined(separator: ", ")
+            return JSONSerializer().string(from: .array(extracted.map { .string($0) }))
         } catch {
             return "Error: Invalid regex pattern '\(pattern)'. \(error.localizedDescription)"
         }
@@ -304,12 +301,7 @@ public struct TextAnalysisTool {
         }
 
         // Return as JSON array
-        if let jsonData = try? JSONSerialization.data(withJSONObject: components),
-           let jsonString = String(data: jsonData, encoding: .utf8) {
-            return jsonString
-        }
-
-        return components.joined(separator: "\n")
+        return JSONSerializer().string(from: .array(components.map { .string($0) }))
     }
 
     private func extractSubstring() -> String {

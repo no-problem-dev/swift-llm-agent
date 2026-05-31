@@ -33,6 +33,8 @@ let package = Package(
         .target(name: "LLMAgent", dependencies: [
             .product(name: "LLMClient", package: "swift-llm-client"),
             .product(name: "LLMTool", package: "swift-llm-client"),
+            .product(name: "StructuredDataCore", package: "swift-structured-data"),
+            .product(name: "YAMLParsing", package: "swift-structured-data"),
         ]),
         .target(name: "LLMMCP", dependencies: [
             .product(name: "LLMClient", package: "swift-llm-client"),
@@ -64,6 +66,8 @@ let package = Package(
             "LLMA2A",
             .product(name: "LLMClient", package: "swift-llm-client"),
             .product(name: "LLMTool", package: "swift-llm-client"),
+            .product(name: "StructuredDataCore", package: "swift-structured-data"),
+            .product(name: "JSONParsing", package: "swift-structured-data"),
         ]),
         .target(name: "LLMiOSToolkits", dependencies: [
             "LLMMCP",
@@ -79,6 +83,7 @@ let package = Package(
             "LLMAgent",
             .product(name: "LLMClient", package: "swift-llm-client"),
             .product(name: "LLMTool", package: "swift-llm-client"),
+            .product(name: "StructuredDataCore", package: "swift-structured-data"),
         ]),
         .target(
             name: "LLMSkill",
@@ -87,6 +92,7 @@ let package = Package(
                 "LLMSubAgent",
                 .product(name: "LLMClient", package: "swift-llm-client"),
                 .product(name: "LLMTool", package: "swift-llm-client"),
+                .product(name: "StructuredDataCore", package: "swift-structured-data"),
             ],
             resources: [
                 .copy("Resources/InteractiveSkills"),
@@ -115,6 +121,8 @@ let package = Package(
             .product(name: "A2A", package: "swift-a2a"),
             .product(name: "LLMClient", package: "swift-llm-client"),
             .product(name: "LLMTool", package: "swift-llm-client"),
+            .product(name: "StructuredDataCore", package: "swift-structured-data"),
+            .product(name: "JSONParsing", package: "swift-structured-data"),
         ]),
         // Tests
         .testTarget(name: "LLMAgentTests", dependencies: ["LLMAgent"]),
@@ -130,6 +138,9 @@ let package = Package(
         .testTarget(name: "LLMiOSToolkitsTests", dependencies: ["LLMiOSToolkits"]),
         .testTarget(name: "LLMmacOSToolkitsTests", dependencies: ["LLMmacOSToolkits"]),
         .testTarget(name: "LLMSubAgentTests", dependencies: ["LLMSubAgent"]),
-        .testTarget(name: "LLMSkillTests", dependencies: ["LLMSkill", "LLMAgent"]),
+        .testTarget(name: "LLMSkillTests", dependencies: [
+            "LLMSkill", "LLMAgent",
+            .product(name: "StructuredDataCore", package: "swift-structured-data"),
+        ]),
     ]
 )

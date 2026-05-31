@@ -1,4 +1,5 @@
 import Foundation
+import StructuredDataCore
 import LLMAgent
 import LLMClient
 
@@ -98,7 +99,8 @@ public enum SubAgentTypeLoader {
     /// - Returns: パースされたエージェントタイプ定義
     /// - Throws: パースエラー
     public static func parse(content: String) throws -> SubAgentTypeDefinition {
-        let (frontmatter, body): ([String: Any], String)
+        let frontmatter: StructuredValue
+        let body: String
         do {
             (frontmatter, body) = try FrontmatterParser.parse(content)
         } catch let error as FrontmatterParseError {
@@ -106,34 +108,35 @@ public enum SubAgentTypeLoader {
         }
 
         // 必須フィールド
-        guard let name = frontmatter["name"] as? String else {
+        guard let name = frontmatter.string("name") else {
             throw SubAgentLoaderError.missingRequiredField("name")
         }
-        guard let description = frontmatter["description"] as? String else {
+        guard let description = frontmatter.string("description") else {
             throw SubAgentLoaderError.missingRequiredField("description")
         }
 
         // 許可ツール（必須）
-        guard let allowedTools = frontmatter["allowed-tools"] as? [String] else {
+        guard let allowedTools = frontmatter.stringArray("allowed-tools") else {
             throw SubAgentLoaderError.missingAllowedTools(name)
         }
 
         // UI 表示用フィールド（オプション）
-        let displayName = frontmatter["display-name"] as? String
-        let iconName = frontmatter["icon"] as? String
+        let displayName = frontmatter.string("display-name")
+        let iconName = frontmatter.string("icon")
 
-        // モデルティア
+        // モデルティア（整数 or light/standard/powerful の文字列）
         let modelTier: ModelTier
-        if let tierValue = frontmatter["model-tier"] as? String {
-            if let tierInt = Int(tierValue), let tier = ModelTier(rawValue: tierInt) {
-                modelTier = tier
-            } else {
-                switch tierValue.lowercased() {
-                case "light": modelTier = .light
-                case "standard": modelTier = .standard
-                case "powerful": modelTier = .powerful
-                default: throw SubAgentLoaderError.invalidModelTier(tierValue)
-                }
+        if let tierInt = frontmatter.int("model-tier") {
+            guard let tier = ModelTier(rawValue: tierInt) else {
+                throw SubAgentLoaderError.invalidModelTier(String(tierInt))
+            }
+            modelTier = tier
+        } else if let tierValue = frontmatter.string("model-tier") {
+            switch tierValue.lowercased() {
+            case "light": modelTier = .light
+            case "standard": modelTier = .standard
+            case "powerful": modelTier = .powerful
+            default: throw SubAgentLoaderError.invalidModelTier(tierValue)
             }
         } else {
             modelTier = .standard
@@ -141,9 +144,7 @@ public enum SubAgentTypeLoader {
 
         // AgentConfiguration（maxSteps をフロントマターから読む）
         var configuration = AgentConfiguration.default
-        if let maxStepsValue = frontmatter["max-steps"] as? String,
-           let maxSteps = Int(maxStepsValue)
-        {
+        if let maxSteps = frontmatter.int("max-steps") {
             configuration = AgentConfiguration(maxSteps: maxSteps)
         }
 

@@ -1,4 +1,6 @@
 import Foundation
+import StructuredDataCore
+import JSONParsing
 import LLMTool
 import LLMMCP
 import LLMAgentSession
@@ -95,14 +97,14 @@ public struct WorkspaceExecutionPolicy: ToolExecutionPolicy {
 
     /// ツール呼び出しからパスを抽出
     private func extractPaths(from call: ToolCall) -> [String] {
-        guard let json = try? JSONSerialization.jsonObject(with: call.arguments) as? [String: Any] else {
+        guard let json = try? JSONParser().parse(call.arguments) else {
             return []
         }
 
         var paths: [String] = []
-        if let path = json["path"] as? String { paths.append(path) }
-        if let source = json["source"] as? String { paths.append(source) }
-        if let destination = json["destination"] as? String { paths.append(destination) }
+        if let path = json.string("path") { paths.append(path) }
+        if let source = json.string("source") { paths.append(source) }
+        if let destination = json.string("destination") { paths.append(destination) }
         return paths
     }
 

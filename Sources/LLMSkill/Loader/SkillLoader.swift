@@ -1,4 +1,5 @@
 import Foundation
+import StructuredDataCore
 import LLMAgent
 
 // MARK: - SkillLoader
@@ -96,7 +97,8 @@ public enum SkillLoader {
     /// - Returns: パースされたスキル定義
     /// - Throws: パースエラー
     public static func parse(content: String) throws -> AgentSkillDefinition {
-        let (frontmatter, body): ([String: Any], String)
+        let frontmatter: StructuredValue
+        let body: String
         do {
             (frontmatter, body) = try FrontmatterParser.parse(content)
         } catch let error as FrontmatterParseError {
@@ -104,16 +106,16 @@ public enum SkillLoader {
         }
 
         // 必須フィールド
-        guard let name = frontmatter["name"] as? String else {
+        guard let name = frontmatter.string("name") else {
             throw SkillError.missingRequiredField("name")
         }
-        guard let description = frontmatter["description"] as? String else {
+        guard let description = frontmatter.string("description") else {
             throw SkillError.missingRequiredField("description")
         }
 
         // 実行モード（context フィールド）
         let executionMode: SkillExecutionMode
-        if let contextStr = frontmatter["context"] as? String {
+        if let contextStr = frontmatter.string("context") {
             guard let mode = SkillExecutionMode(rawValue: contextStr) else {
                 throw SkillError.invalidExecutionMode(contextStr)
             }
@@ -123,7 +125,7 @@ public enum SkillLoader {
         }
 
         // 許可ツール
-        let allowedTools = frontmatter["allowed-tools"] as? [String]
+        let allowedTools = frontmatter.stringArray("allowed-tools")
 
         // fork スキルには allowed-tools を必須化
         if executionMode == .fork && allowedTools == nil {
@@ -131,21 +133,14 @@ public enum SkillLoader {
         }
 
         // 表示メタデータ
-        let displayName = frontmatter["display-name"] as? String
-        let iconName = frontmatter["icon"] as? String ?? "sparkles"
-        let category = frontmatter["category"] as? String
-        let displayOrder: Int
-        if let orderValue = frontmatter["display-order"] as? String, let order = Int(orderValue) {
-            displayOrder = order
-        } else if let orderInt = frontmatter["display-order"] as? Int {
-            displayOrder = orderInt
-        } else {
-            displayOrder = 999
-        }
+        let displayName = frontmatter.string("display-name")
+        let iconName = frontmatter.string("icon") ?? "sparkles"
+        let category = frontmatter.string("category")
+        let displayOrder = frontmatter.int("display-order") ?? 999
 
         // 利用可能性
         let availability: SkillAvailability
-        if let availStr = frontmatter["availability"] as? String {
+        if let availStr = frontmatter.string("availability") {
             guard let parsed = SkillAvailability(rawValue: availStr) else {
                 throw SkillError.invalidAvailability(availStr)
             }
@@ -155,8 +150,8 @@ public enum SkillLoader {
         }
 
         // 呼び出し制御
-        let isUserInvocable = frontmatter["user-invocable"] as? Bool ?? true
-        let disableModel = frontmatter["disable-model-invocation"] as? Bool ?? false
+        let isUserInvocable = frontmatter.bool("user-invocable") ?? true
+        let disableModel = frontmatter.bool("disable-model-invocation") ?? false
         let invocationMode: SkillInvocationMode
         if isUserInvocable && !disableModel {
             invocationMode = .both
@@ -169,15 +164,15 @@ public enum SkillLoader {
             invocationMode = .none
         }
 
-        let argumentHint = frontmatter["argument-hint"] as? String
-        let isEphemeral = frontmatter["ephemeral"] as? Bool ?? false
+        let argumentHint = frontmatter.string("argument-hint")
+        let isEphemeral = frontmatter.bool("ephemeral") ?? false
 
         // メタデータ
-        let license = frontmatter["license"] as? String
-        let compatibility = frontmatter["compatibility"] as? String
-        let version = frontmatter["version"] as? String
-        let author = frontmatter["author"] as? String
-        let tags = frontmatter["tags"] as? [String]
+        let license = frontmatter.string("license")
+        let compatibility = frontmatter.string("compatibility")
+        let version = frontmatter.string("version")
+        let author = frontmatter.string("author")
+        let tags = frontmatter.stringArray("tags")
 
         var metadata: SkillMetadata? = nil
         if license != nil || compatibility != nil || version != nil || author != nil || tags != nil {
@@ -192,24 +187,23 @@ public enum SkillLoader {
 
         // AgentConfiguration（maxSteps をフロントマターから読む）
         var configuration = AgentConfiguration.default
-        if let maxStepsValue = frontmatter["max-steps"] as? String,
-           let maxSteps = Int(maxStepsValue)
-        {
+        if let maxSteps = frontmatter.int("max-steps") {
             configuration = AgentConfiguration(maxSteps: maxSteps)
         }
 
-        // モデルティア
+        // モデルティア（整数 or light/standard/powerful の文字列）
         let modelTier: ModelTier
-        if let tierValue = frontmatter["model-tier"] as? String {
-            if let tierInt = Int(tierValue), let tier = ModelTier(rawValue: tierInt) {
-                modelTier = tier
-            } else {
-                switch tierValue.lowercased() {
-                case "light": modelTier = .light
-                case "standard": modelTier = .standard
-                case "powerful": modelTier = .powerful
-                default: throw SkillError.invalidModelTier(tierValue)
-                }
+        if let tierInt = frontmatter.int("model-tier") {
+            guard let tier = ModelTier(rawValue: tierInt) else {
+                throw SkillError.invalidModelTier(String(tierInt))
+            }
+            modelTier = tier
+        } else if let tierValue = frontmatter.string("model-tier") {
+            switch tierValue.lowercased() {
+            case "light": modelTier = .light
+            case "standard": modelTier = .standard
+            case "powerful": modelTier = .powerful
+            default: throw SkillError.invalidModelTier(tierValue)
             }
         } else {
             modelTier = .standard
