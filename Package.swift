@@ -21,7 +21,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/no-problem-dev/swift-agent-communication.git", from: "1.1.0"),
         .package(url: "https://github.com/no-problem-dev/swift-llm-client.git", from: "2.0.0"),
-        .package(url: "https://github.com/no-problem-dev/swift-a2a.git", from: "0.1.1"),
+        .package(url: "https://github.com/no-problem-dev/swift-a2a.git", from: "0.2.0"),
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.1"),
         .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.6.0"),
         .package(url: "https://github.com/no-problem-dev/swift-a2ui.git", from: "0.7.2"),
