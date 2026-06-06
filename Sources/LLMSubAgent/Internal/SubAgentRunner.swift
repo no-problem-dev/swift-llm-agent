@@ -135,7 +135,8 @@ package enum SubAgentRunner {
                         responseSchema: nil,
                         thinkingMode: configuration.thinkingMode,
                         reasoningEffort: configuration.reasoningEffort,
-                        maxTokens: configuration.maxTokens
+                        maxTokens: configuration.maxTokens,
+                    cachePolicy: .implicit
                     )
                     }
                 )

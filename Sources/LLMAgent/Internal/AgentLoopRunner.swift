@@ -258,7 +258,8 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
                     responseSchema: responseSchema,
                     thinkingMode: config.thinkingMode,
                     reasoningEffort: config.reasoningEffort,
-                    maxTokens: config.maxTokens
+                    maxTokens: config.maxTokens,
+                    cachePolicy: .implicit
                 )
             } catch let error as LLMError {
                 throw AgentError.llmError(error)
@@ -275,7 +276,8 @@ internal actor AgentLoopRunner<Client: AgentCapableClient, Output: StructuredPro
                     responseSchema: Output.jsonSchema,
                     thinkingMode: config.thinkingMode,
                     reasoningEffort: config.reasoningEffort,
-                    maxTokens: config.maxTokens
+                    maxTokens: config.maxTokens,
+                    cachePolicy: .implicit
                 )
             } catch let error as LLMError {
                 throw AgentError.llmError(error)

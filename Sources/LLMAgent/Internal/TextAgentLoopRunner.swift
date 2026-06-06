@@ -276,7 +276,8 @@ internal actor TextAgentLoopRunner<Client: AgentCapableClient>
                 responseSchema: nil, // テキスト出力モード: 構造化スキーマは要求しない
                 thinkingMode: config.thinkingMode,
                 reasoningEffort: config.reasoningEffort,
-                maxTokens: config.maxTokens
+                maxTokens: config.maxTokens,
+                    cachePolicy: .implicit
             )
         } catch let error as LLMError {
             throw AgentError.llmError(error)

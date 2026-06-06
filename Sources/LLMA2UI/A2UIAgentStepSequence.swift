@@ -164,7 +164,8 @@ where Client.Model: Sendable {
                     responseSchema: nil,
                     thinkingMode: .disabled,
                     reasoningEffort: nil,
-                    maxTokens: nil
+                    maxTokens: nil,
+                    cachePolicy: .implicit
                 )
 
                 continuation.yield(.thinking(response))

@@ -324,7 +324,8 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                             responseSchema: nil,
                             thinkingMode: configuration.thinkingMode,
                             reasoningEffort: configuration.reasoningEffort,
-                            maxTokens: configuration.maxTokens
+                            maxTokens: configuration.maxTokens,
+                    cachePolicy: .implicit
                         ) {
                             switch event {
                             case .delta(let delta):
@@ -356,7 +357,8 @@ public actor ConversationalAgentSession<Client: AgentCapableClient>: Conversatio
                             responseSchema: Output.jsonSchema,
                             thinkingMode: configuration.thinkingMode,
                             reasoningEffort: configuration.reasoningEffort,
-                            maxTokens: configuration.maxTokens
+                            maxTokens: configuration.maxTokens,
+                    cachePolicy: .implicit
                         ) {
                             switch event {
                             case .delta(let delta):

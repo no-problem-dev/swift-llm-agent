@@ -265,7 +265,8 @@ private struct MockAgentClient: AgentCapableClient {
         responseSchema: JSONSchema?,
         thinkingMode: ThinkingMode,
         reasoningEffort: ReasoningEffort?,
-        maxTokens: Int?
+        maxTokens: Int?,
+        cachePolicy: PromptCachePolicy
     ) async throws -> LLMResponse {
         LLMResponse(
             content: [.text("Mock response")],
@@ -282,7 +283,8 @@ private struct MockAgentClient: AgentCapableClient {
         toolChoice: ToolChoice?,
         systemPrompt: SystemPrompt?,
         temperature: Double?,
-        maxTokens: Int?
+        maxTokens: Int?,
+        cachePolicy: PromptCachePolicy
     ) async throws -> ToolCallResponse {
         ToolCallResponse(
             toolCalls: [],
