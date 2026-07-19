@@ -1,5 +1,17 @@
 [English](README_EN.md) | 日本語
 
+> [!WARNING]
+> **このパッケージは廃止されました（2026-07-19）。** 本リポジトリはアーカイブされ、今後保守されません。
+>
+> 後継パッケージ:
+> - MCP ツール実行 / Web フェッチ → [swift-llm-mcp](https://github.com/no-problem-dev/swift-llm-mcp)（LLMMCP / WebFetchKit）
+> - エージェントループ / ランタイム → [swift-agent-runtime](https://github.com/no-problem-dev/swift-agent-runtime)
+> - エージェントスキル → [swift-agent-skills](https://github.com/no-problem-dev/swift-agent-skills)
+> - A2A プロトコル → [swift-a2a](https://github.com/no-problem-dev/swift-a2a)
+> - LLM クライアント / ツール定義 → [swift-llm-client](https://github.com/no-problem-dev/swift-llm-client)
+>
+> デバイストゥールキット（LLMiOSToolkits / LLMmacOSToolkits）と Interactive Payload 型システムに後継はありません。必要な場合は本リポジトリの git 履歴を参照してください。
+
 # LLMAgent
 
 LLM エージェントアーキテクチャ Swift パッケージ

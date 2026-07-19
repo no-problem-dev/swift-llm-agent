@@ -1,5 +1,17 @@
 English | [日本語](README.md)
 
+> [!WARNING]
+> **This package is deprecated (2026-07-19).** The repository is archived and no longer maintained.
+>
+> Successors:
+> - MCP tool execution / web fetch → [swift-llm-mcp](https://github.com/no-problem-dev/swift-llm-mcp) (LLMMCP / WebFetchKit)
+> - Agent loop / runtime → [swift-agent-runtime](https://github.com/no-problem-dev/swift-agent-runtime)
+> - Agent skills → [swift-agent-skills](https://github.com/no-problem-dev/swift-agent-skills)
+> - A2A protocol → [swift-a2a](https://github.com/no-problem-dev/swift-a2a)
+> - LLM client / tool definitions → [swift-llm-client](https://github.com/no-problem-dev/swift-llm-client)
+>
+> The device toolkits (LLMiOSToolkits / LLMmacOSToolkits) and the Interactive Payload type system have no successor; refer to this repository's git history if needed.
+
 # LLMAgent
 
 An LLM agent architecture Swift package
